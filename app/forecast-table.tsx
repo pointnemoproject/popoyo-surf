@@ -88,9 +88,9 @@ function formatWind(
   direction: number | null,
   gusts: number | null
 ) {
-  return `${cardinalFromDegrees(direction)} ${formatWindSpeed(speed)} gust ${
-    typeof gusts === "number" ? Math.round(gusts) : "--"
-  }`;
+  const wind = `${cardinalFromDegrees(direction)} ${formatWindSpeed(speed)}`;
+
+  return typeof gusts === "number" ? `${wind} gust ${Math.round(gusts)}` : wind;
 }
 
 function formatCurrentTide(value: number | null | undefined) {
