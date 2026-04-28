@@ -109,6 +109,7 @@ export async function getForecast(): Promise<SurfForecast> {
       hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
       past_days: 0,
       forecast_days: 16,
+      timezone: "auto",
       wind_speed_unit: "kn"
     }
   );
