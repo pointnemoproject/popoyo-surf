@@ -19,11 +19,7 @@ type MarineHourly = {
   secondary_swell_wave_period?: NullableNumber[];
   secondary_swell_wave_direction?: NullableNumber[];
   swell_wave_peak_period?: NullableNumber[];
-};
-
-type MarineCurrent = {
-  time?: string;
-  sea_level_height_msl?: NullableNumber;
+  sea_level_height_msl?: NullableNumber[];
 };
 
 type WeatherHourly = {
@@ -35,7 +31,6 @@ type WeatherHourly = {
 
 type OpenMeteoMarineResponse = {
   hourly?: MarineHourly;
-  current?: MarineCurrent;
 };
 
 type OpenMeteoWeatherResponse = {
@@ -85,6 +80,40 @@ function weatherIndexByTime(hourly: WeatherHourly | MarineHourly) {
   return new Map(hourly.time.map((time, index) => [time, index]));
 }
 
+function energyScore(height: NullableNumber, period: NullableNumber) {
+  return typeof height === "number" && typeof period === "number"
+    ? height * period
+    : Number.NEGATIVE_INFINITY;
+}
+
+function rankSwellComponents(
+  primary: {
+    height: NullableNumber;
+    period: NullableNumber;
+    peakPeriod: NullableNumber;
+    direction: NullableNumber;
+  },
+  secondary: {
+    height: NullableNumber;
+    period: NullableNumber;
+    peakPeriod: NullableNumber;
+    direction: NullableNumber;
+  }
+) {
+  const components = [primary, secondary].map((component, index) => ({
+    component,
+    energyScore: energyScore(component.height, component.period),
+    index
+  }));
+
+  components.sort((a, b) => b.energyScore - a.energyScore || a.index - b.index);
+
+  return {
+    primarySwell: components[0].component,
+    secondarySwell: components[1].component
+  };
+}
+
 export async function getForecast(): Promise<SurfForecast> {
   const swellUrl = buildUrl(
     "https://marine-api.open-meteo.com/v1/marine",
@@ -109,6 +138,7 @@ export async function getForecast(): Promise<SurfForecast> {
       hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
       past_days: 0,
       forecast_days: 16,
+      timezone: "auto",
       wind_speed_unit: "kn"
     }
   );
@@ -118,7 +148,7 @@ export async function getForecast(): Promise<SurfForecast> {
     {
       latitude: NEARSHORE_POINT.latitude,
       longitude: NEARSHORE_POINT.longitude,
-      current: "sea_level_height_msl",
+      hourly: "sea_level_height_msl",
       timezone: "auto",
       past_days: 0,
       forecast_days: 16,
@@ -135,24 +165,28 @@ export async function getForecast(): Promise<SurfForecast> {
     throw new Error("Open-Meteo swell response did not include hourly data");
   }
 
+  if (!tide.hourly) {
+    throw new Error("Open-Meteo tide response did not include hourly data");
+  }
+
   const swellHourly = swell.hourly;
   const windByTime = weatherIndexByTime(wind.hourly);
+  const tideByTime = weatherIndexByTime(tide.hourly);
 
   const rows = swellHourly.time
     .map((time, index) => ({ time, index }))
     .filter((_, rowIndex) => rowIndex % THREE_HOUR_STEP === 0)
     .map(({ time, index }) => {
       const windIndex = windByTime.get(time);
-
-      return {
-        time,
-        primarySwell: {
+      const tideIndex = tideByTime.get(time);
+      const rankedSwell = rankSwellComponents(
+        {
           height: byTime(swellHourly, index, "swell_wave_height"),
           period: byTime(swellHourly, index, "swell_wave_period"),
           peakPeriod: byTime(swellHourly, index, "swell_wave_peak_period"),
           direction: byTime(swellHourly, index, "swell_wave_direction")
         },
-        secondarySwell: {
+        {
           height: byTime(
             swellHourly,
             index,
@@ -163,12 +197,19 @@ export async function getForecast(): Promise<SurfForecast> {
             index,
             "secondary_swell_wave_period"
           ),
+          peakPeriod: null,
           direction: byTime(
             swellHourly,
             index,
             "secondary_swell_wave_direction"
           )
-        },
+        }
+      );
+
+      return {
+        time,
+        primarySwell: rankedSwell.primarySwell,
+        secondarySwell: rankedSwell.secondarySwell,
         wind: {
           speed:
             typeof windIndex === "number"
@@ -182,19 +223,18 @@ export async function getForecast(): Promise<SurfForecast> {
             typeof windIndex === "number"
               ? byTime(wind.hourly, windIndex, "wind_direction_10m")
               : null
+        },
+        tide: {
+          seaLevelMsl:
+            typeof tideIndex === "number"
+              ? byTime(tide.hourly!, tideIndex, "sea_level_height_msl")
+              : null
         }
       };
     });
 
   return {
     generatedAt: new Date().toISOString(),
-    currentTide: {
-      seaLevelMsl:
-        typeof tide.current?.sea_level_height_msl === "number"
-          ? tide.current.sea_level_height_msl * 3.28084
-          : null,
-      unit: "ft"
-    },
     rows
   };
 }
