@@ -1,8 +1,8 @@
 export const FORECAST_REVALIDATE_SECONDS = 60 * 60;
 
 export const OFFSHORE_POINT = {
-  latitude: 11.363528,
-  longitude: -86.161333
+  latitude: 11.199031,
+  longitude: -86.30816
 } as const;
 
 export const NEARSHORE_POINT = {
@@ -23,6 +23,7 @@ export type ForecastRow = {
   secondarySwell: {
     height: NullableNumber;
     period: NullableNumber;
+    peakPeriod: NullableNumber;
     direction: NullableNumber;
   };
   wind: {
@@ -30,13 +31,12 @@ export type ForecastRow = {
     gusts: NullableNumber;
     direction: NullableNumber;
   };
+  tide: {
+    seaLevelMsl: NullableNumber;
+  };
 };
 
 export type SurfForecast = {
   generatedAt: string;
-  currentTide: {
-    seaLevelMsl: NullableNumber;
-    unit: "ft";
-  };
   rows: ForecastRow[];
 };
