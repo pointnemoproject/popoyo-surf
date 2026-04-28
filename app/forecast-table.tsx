@@ -79,6 +79,10 @@ function formatSwell(
   )} ${formatDirectionDegrees(direction)}`;
 }
 
+function formatEnergy(value: number | null | undefined) {
+  return typeof value === "number" ? `Energy ${Math.round(value)}` : null;
+}
+
 function formatWindSpeed(value: number | null | undefined) {
   return typeof value === "number" ? `${Math.round(value)}kt` : "--";
 }
@@ -88,15 +92,15 @@ function formatWind(
   direction: number | null,
   gusts: number | null
 ) {
-  return `${cardinalFromDegrees(direction)} ${formatWindSpeed(speed)} gust ${
-    typeof gusts === "number" ? Math.round(gusts) : "--"
-  }`;
+  const wind = `${cardinalFromDegrees(direction)} ${formatWindSpeed(speed)}`;
+
+  return typeof gusts === "number" ? `${wind} gust ${Math.round(gusts)}` : wind;
 }
 
-function formatCurrentTide(value: number | null | undefined) {
+function formatTide(value: number | null | undefined) {
   return typeof value === "number"
-    ? `Current tide: ${value.toFixed(1)} ft`
-    : "Current tide: --";
+    ? `${(value * 3.28084).toFixed(1)} ft`
+    : "--";
 }
 
 function formatGeneratedAt(value: string) {
@@ -156,8 +160,7 @@ export function ForecastTable() {
   return (
     <>
       <div className="updated-pill">
-        Updated {formatGeneratedAt(forecast.generatedAt)} ·{" "}
-        {formatCurrentTide(forecast.currentTide.seaLevelMsl)}
+        Updated {formatGeneratedAt(forecast.generatedAt)}
       </div>
       <div className="forecast-table-wrap">
         <table className="forecast-table">
@@ -193,6 +196,9 @@ export function ForecastTable() {
                           row.primarySwell.direction
                         )}
                       </strong>
+                      {formatEnergy(row.primarySwell.energy) ? (
+                        <span>{formatEnergy(row.primarySwell.energy)}</span>
+                      ) : null}
                     </td>
                     <td>
                       <strong>
@@ -202,6 +208,9 @@ export function ForecastTable() {
                           row.secondarySwell.direction
                         )}
                       </strong>
+                      {formatEnergy(row.secondarySwell.energy) ? (
+                        <span>{formatEnergy(row.secondarySwell.energy)}</span>
+                      ) : null}
                     </td>
                     <td>
                       <strong>
@@ -213,9 +222,7 @@ export function ForecastTable() {
                       </strong>
                     </td>
                     <td>
-                      <strong>
-                        {formatCurrentTide(forecast.currentTide.seaLevelMsl)}
-                      </strong>
+                      <strong>{formatTide(row.tide.seaLevelMsl)}</strong>
                     </td>
                   </tr>
                 </Fragment>
