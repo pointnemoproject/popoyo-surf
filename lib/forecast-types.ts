@@ -71,6 +71,7 @@ export type SurfForecast = {
   currentTide: {
     seaLevelMsl: NullableNumber;
   } | null;
+  tideEvents: TideEvent[];
   debug: {
     sources: ForecastSourceDebug[];
   };
