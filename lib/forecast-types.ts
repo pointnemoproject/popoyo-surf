@@ -35,10 +35,35 @@ export type ForecastRow = {
   };
   tide: {
     seaLevelMsl: NullableNumber;
+  } | null;
+};
+
+export type ForecastSourceDebug = {
+  source: string;
+  endpoint: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
   };
+  requestedForecastDays: number;
+  hourlyTimestampsReturned: number;
+  firstTimestamp: string | null;
+  lastTimestamp: string | null;
+  model?: string;
+  apiModel?: string;
+  datum?: string;
+  extremesReturned?: number;
+  error?: string;
 };
 
 export type SurfForecast = {
   generatedAt: string;
+  activeSwellModel: string;
+  currentTide: {
+    seaLevelMsl: NullableNumber;
+  } | null;
+  debug: {
+    sources: ForecastSourceDebug[];
+  };
   rows: ForecastRow[];
 };
