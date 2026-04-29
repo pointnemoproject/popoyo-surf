@@ -133,6 +133,12 @@ function formatTideEvent(value: SurfForecast["rows"][number]["tide"]) {
   return `${label} ${formatTime(value.event.time)} ${formatTide(value.event.height)}`;
 }
 
+function formatTideSummaryEvent(event: SurfForecast["tideEvents"][number]) {
+  const label = event.type === "high" ? "High" : "Low";
+
+  return `${label} ${formatTime(event.time)} ${formatTide(event.height)}`;
+}
+
 function formatGeneratedAt(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -189,6 +195,15 @@ export function ForecastTable() {
 
   let previousDay = "";
   const displayRows = forecast.rows.filter((row) => isSurfHour(row.time));
+  const tideEventsByDay = forecast.tideEvents.reduce<
+    Record<string, SurfForecast["tideEvents"]>
+  >((eventsByDay, event) => {
+    const key = dayKey(event.time);
+
+    eventsByDay[key] = [...(eventsByDay[key] ?? []), event];
+
+    return eventsByDay;
+  }, {});
 
   return (
     <>
@@ -234,9 +249,25 @@ export function ForecastTable() {
               return (
                 <Fragment key={row.time}>
                   {showDay ? (
-                    <tr className="day-row" key={`${row.time}-day`}>
-                      <th colSpan={5}>{formatDay(row.time)}</th>
-                    </tr>
+                    <>
+                      <tr className="day-row" key={`${row.time}-day`}>
+                        <th colSpan={5}>{formatDay(row.time)}</th>
+                      </tr>
+                      <tr className="tide-summary-row" key={`${row.time}-tides`}>
+                        <th scope="row">Tides</th>
+                        <td colSpan={4}>
+                          {tideEventsByDay[currentDay]?.length ? (
+                            tideEventsByDay[currentDay].map((event) => (
+                              <span key={`${event.type}-${event.time}`}>
+                                {formatTideSummaryEvent(event)}
+                              </span>
+                            ))
+                          ) : (
+                            <span>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    </>
                   ) : null}
                   <tr>
                     <th scope="row">{formatTime(row.time)}</th>
