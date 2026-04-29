@@ -6,8 +6,8 @@ export const OFFSHORE_POINT = {
 } as const;
 
 export const NEARSHORE_POINT = {
-  latitude: 11.4206,
-  longitude: -86.114187
+  latitude: 11.348145,
+  longitude: -86.20443
 } as const;
 
 export type NullableNumber = number | null;
