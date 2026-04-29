@@ -5,6 +5,7 @@ import {
   NEARSHORE_POINT,
   OFFSHORE_POINT,
   type NullableNumber,
+  type ForecastSourceDebug,
   type SurfForecast
 } from "@/lib/forecast-types";
 
@@ -22,6 +23,11 @@ type MarineHourly = {
   sea_level_height_msl?: NullableNumber[];
 };
 
+type MarineCurrent = {
+  time?: string;
+  sea_level_height_msl?: NullableNumber;
+};
+
 type WeatherHourly = {
   time: string[];
   wind_speed_10m?: NullableNumber[];
@@ -31,13 +37,59 @@ type WeatherHourly = {
 
 type OpenMeteoMarineResponse = {
   hourly?: MarineHourly;
+  current?: MarineCurrent;
+};
+
+type StormglassSeaLevelPoint = {
+  time: string;
+  height?: NullableNumber;
+};
+
+type StormglassExtremePoint = {
+  time: string;
+  height?: NullableNumber;
+  type?: "high" | "low" | string;
+};
+
+type StormglassTideResponse = {
+  data?: StormglassSeaLevelPoint[];
+};
+
+type StormglassExtremesResponse = {
+  data?: StormglassExtremePoint[];
 };
 
 type OpenMeteoWeatherResponse = {
-  hourly: WeatherHourly;
+  hourly?: WeatherHourly;
 };
 
-const THREE_HOUR_STEP = 3;
+export const SWELL_MODELS = [
+  "best_match",
+  "ecmwf_wam",
+  "gfs_wave",
+  "meteofrance_mfwam"
+] as const;
+
+export type SwellModel = (typeof SWELL_MODELS)[number];
+
+const FORECAST_DAYS = 16;
+const MARINE_ENDPOINT = "https://marine-api.open-meteo.com/v1/marine";
+const WIND_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
+const STORMGLASS_TIDE_ENDPOINT =
+  "https://api.stormglass.io/v2/tide/sea-level/point";
+const STORMGLASS_TIDE_EXTREMES_ENDPOINT =
+  "https://api.stormglass.io/v2/tide/extremes/point";
+const SWELL_HOURLY =
+  "swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,swell_wave_peak_period";
+const WIND_HOURLY = "wind_speed_10m,wind_direction_10m,wind_gusts_10m";
+const TIDE_REVALIDATE_SECONDS = 6 * 60 * 60;
+
+const SWELL_MODEL_API_VALUES: Record<SwellModel, string | null> = {
+  best_match: null,
+  ecmwf_wam: "ecmwf_wam",
+  gfs_wave: "ncep_gfswave025",
+  meteofrance_mfwam: "meteofrance_wave"
+};
 
 function buildUrl(baseUrl: string, params: Record<string, string | number>) {
   const url = new URL(baseUrl);
@@ -49,16 +101,29 @@ function buildUrl(baseUrl: string, params: Record<string, string | number>) {
   return url.toString();
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJson<T>(
+  url: string,
+  options: {
+    headers?: HeadersInit;
+    revalidate?: number;
+  } = {}
+): Promise<T> {
   const response = await fetch(url, {
-    next: { revalidate: FORECAST_REVALIDATE_SECONDS }
+    headers: options.headers,
+    next: { revalidate: options.revalidate ?? FORECAST_REVALIDATE_SECONDS }
   });
 
   if (!response.ok) {
-    throw new Error(`Open-Meteo request failed: ${response.status}`);
+    throw new Error(`Forecast request failed: ${response.status}`);
   }
 
   return response.json() as Promise<T>;
+}
+
+function normalizeSwellModel(value: string | null | undefined): SwellModel {
+  return SWELL_MODELS.includes(value as SwellModel)
+    ? (value as SwellModel)
+    : "best_match";
 }
 
 function byTime<T extends { time: string[] }>(
@@ -78,6 +143,70 @@ function byTime<T extends { time: string[] }>(
 
 function weatherIndexByTime(hourly: WeatherHourly | MarineHourly) {
   return new Map(hourly.time.map((time, index) => [time, index]));
+}
+
+function localForecastKeyFromDate(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Managua",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    hour12: false
+  }).formatToParts(date);
+  const getPart = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  const hour = getPart("hour") === "24" ? "00" : getPart("hour");
+
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}T${hour}:00`;
+}
+
+function stormglassLocalDateWindow() {
+  const [date] = localForecastKeyFromDate(new Date()).split("T");
+  const start = new Date(`${date}T06:00:00.000Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + FORECAST_DAYS);
+
+  return { start, end };
+}
+
+function stormglassPointsToHourly(points: StormglassSeaLevelPoint[] = []) {
+  const tideByTime = new Map<string, NullableNumber>();
+
+  for (const point of points) {
+    const time = localForecastKeyFromDate(new Date(point.time));
+    tideByTime.set(time, typeof point.height === "number" ? point.height : null);
+  }
+
+  return tideByTime;
+}
+
+function sourceDebug(
+  source: string,
+  endpoint: string,
+  coordinates: { latitude: number; longitude: number },
+  hourly: { time: string[] } | null | undefined,
+  options: {
+    model?: string;
+    apiModel?: string;
+    datum?: string;
+    extremesReturned?: number;
+    error?: string;
+  } = {}
+): ForecastSourceDebug {
+  const timestamps = hourly?.time ?? [];
+
+  return {
+    source,
+    endpoint,
+    coordinates,
+    requestedForecastDays: FORECAST_DAYS,
+    hourlyTimestampsReturned: timestamps.length,
+    firstTimestamp: timestamps[0] ?? null,
+    lastTimestamp: timestamps.at(-1) ?? null,
+    ...options
+  };
 }
 
 function energyScore(height: NullableNumber, period: NullableNumber) {
@@ -121,127 +250,291 @@ function rankSwellComponents(
   };
 }
 
-export async function getForecast(): Promise<SurfForecast> {
+async function fetchSource<T>(
+  url: string,
+  debugFactory: (data: T | null, error?: string) => ForecastSourceDebug
+) {
+  try {
+    const data = await fetchJson<T>(url);
+
+    return {
+      data,
+      debug: debugFactory(data)
+    };
+  } catch (error) {
+    return {
+      data: null,
+      debug: debugFactory(
+        null,
+        error instanceof Error ? error.message : "Unknown fetch error"
+      )
+    };
+  }
+}
+
+async function fetchTideForecast() {
+  const apiKey = process.env.STORMGLASS_API_KEY;
+  const { start, end } = stormglassLocalDateWindow();
+  const baseParams = {
+    lat: NEARSHORE_POINT.latitude,
+    lng: NEARSHORE_POINT.longitude,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    datum: "MLLW"
+  };
+  const seaLevelUrl = buildUrl(STORMGLASS_TIDE_ENDPOINT, baseParams);
+
+  if (!apiKey) {
+    return {
+      tideByTime: new Map<string, NullableNumber>(),
+      currentTide: null,
+      debug: sourceDebug("tide", STORMGLASS_TIDE_ENDPOINT, NEARSHORE_POINT, null, {
+        datum: "MLLW",
+        error: "STORMGLASS_API_KEY is not configured"
+      })
+    };
+  }
+
+  try {
+    const seaLevel = await fetchJson<StormglassTideResponse>(seaLevelUrl, {
+      headers: { Authorization: apiKey },
+      revalidate: TIDE_REVALIDATE_SECONDS
+    });
+    const points = seaLevel.data ?? [];
+    const timestamps = points.map((point) =>
+      localForecastKeyFromDate(new Date(point.time))
+    );
+
+    return {
+      tideByTime: stormglassPointsToHourly(points),
+      currentTide: null,
+      debug: {
+        source: "tide",
+        endpoint: STORMGLASS_TIDE_ENDPOINT,
+        coordinates: NEARSHORE_POINT,
+        requestedForecastDays: FORECAST_DAYS,
+        hourlyTimestampsReturned: timestamps.length,
+        firstTimestamp: timestamps[0] ?? null,
+        lastTimestamp: timestamps.at(-1) ?? null,
+        datum: "MLLW"
+      }
+    };
+  } catch (seaLevelError) {
+    const extremesUrl = buildUrl(
+      STORMGLASS_TIDE_EXTREMES_ENDPOINT,
+      baseParams
+    );
+
+    try {
+      const extremes = await fetchJson<StormglassExtremesResponse>(
+        extremesUrl,
+        {
+          headers: { Authorization: apiKey },
+          revalidate: TIDE_REVALIDATE_SECONDS
+        }
+      );
+      const points = extremes.data ?? [];
+
+      return {
+        tideByTime: new Map<string, NullableNumber>(),
+        currentTide: null,
+        debug: sourceDebug("tide", STORMGLASS_TIDE_EXTREMES_ENDPOINT, NEARSHORE_POINT, null, {
+          datum: "MLLW",
+          extremesReturned: points.length,
+          error:
+            seaLevelError instanceof Error
+              ? `Sea-level unavailable; using extremes metadata only. ${seaLevelError.message}`
+              : "Sea-level unavailable; using extremes metadata only."
+        })
+      };
+    } catch (extremesError) {
+      return {
+        tideByTime: new Map<string, NullableNumber>(),
+        currentTide: null,
+        debug: sourceDebug("tide", STORMGLASS_TIDE_ENDPOINT, NEARSHORE_POINT, null, {
+          datum: "MLLW",
+          error:
+            extremesError instanceof Error
+              ? extremesError.message
+              : "Stormglass tide request failed"
+        })
+      };
+    }
+  }
+}
+
+function tideValueForTime(
+  tideByTime: Map<string, NullableNumber>,
+  time: string
+) {
+  const tideValue = tideByTime.get(time);
+
+  return typeof tideValue === "number" ? tideValue : null;
+}
+
+function sourceRows(
+  swellHourly: MarineHourly | undefined,
+  windHourly: WeatherHourly | undefined,
+  tideByTime: Map<string, NullableNumber>
+) {
+  return Array.from(
+    new Set([
+      ...(swellHourly?.time ?? []),
+      ...(windHourly?.time ?? []),
+      ...tideByTime.keys()
+    ])
+  )
+    .sort()
+    .slice(0, FORECAST_DAYS * 24);
+}
+
+function shouldUseTideValue(value: NullableNumber) {
+  return typeof value === "number" && value >= 0;
+}
+
+function tideRow(value: NullableNumber) {
+  return shouldUseTideValue(value) ? { seaLevelMsl: value } : null;
+}
+
+function windRow(
+  windHourly: WeatherHourly | undefined,
+  windIndex: number | undefined
+) {
+  return {
+    speed:
+      typeof windIndex === "number" && windHourly
+        ? byTime(windHourly, windIndex, "wind_speed_10m")
+        : null,
+    gusts:
+      typeof windIndex === "number" && windHourly
+        ? byTime(windHourly, windIndex, "wind_gusts_10m")
+        : null,
+    direction:
+      typeof windIndex === "number" && windHourly
+        ? byTime(windHourly, windIndex, "wind_direction_10m")
+        : null
+  };
+}
+
+function rankedSwellRow(
+  swellHourly: MarineHourly | undefined,
+  swellIndex: number | undefined
+) {
+  return rankSwellComponents(
+    {
+      height:
+        typeof swellIndex === "number" && swellHourly
+          ? byTime(swellHourly, swellIndex, "swell_wave_height")
+          : null,
+      period:
+        typeof swellIndex === "number" && swellHourly
+          ? byTime(swellHourly, swellIndex, "swell_wave_period")
+          : null,
+      peakPeriod:
+        typeof swellIndex === "number" && swellHourly
+          ? byTime(swellHourly, swellIndex, "swell_wave_peak_period")
+          : null,
+      direction:
+        typeof swellIndex === "number" && swellHourly
+          ? byTime(swellHourly, swellIndex, "swell_wave_direction")
+          : null
+    },
+    {
+      height:
+        typeof swellIndex === "number" && swellHourly
+          ? byTime(swellHourly, swellIndex, "secondary_swell_wave_height")
+          : null,
+      period:
+        typeof swellIndex === "number" && swellHourly
+          ? byTime(swellHourly, swellIndex, "secondary_swell_wave_period")
+          : null,
+      peakPeriod: null,
+      direction:
+        typeof swellIndex === "number" && swellHourly
+          ? byTime(swellHourly, swellIndex, "secondary_swell_wave_direction")
+          : null
+    }
+  );
+}
+
+export async function getForecast(
+  options: { swellModel?: string } = {}
+): Promise<SurfForecast> {
+  const activeSwellModel = normalizeSwellModel(options.swellModel);
+  const apiSwellModel = SWELL_MODEL_API_VALUES[activeSwellModel];
   const swellUrl = buildUrl(
-    "https://marine-api.open-meteo.com/v1/marine",
+    MARINE_ENDPOINT,
     {
       latitude: OFFSHORE_POINT.latitude,
       longitude: OFFSHORE_POINT.longitude,
-      hourly:
-        "swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,swell_wave_peak_period",
+      hourly: SWELL_HOURLY,
       timezone: "auto",
       past_days: 0,
-      forecast_days: 16,
+      forecast_days: FORECAST_DAYS,
       length_unit: "imperial",
-      wind_speed_unit: "kn"
+      wind_speed_unit: "kn",
+      ...(apiSwellModel ? { models: apiSwellModel } : {})
     }
   );
 
   const windUrl = buildUrl(
-    "https://api.open-meteo.com/v1/forecast",
+    WIND_ENDPOINT,
     {
       latitude: NEARSHORE_POINT.latitude,
       longitude: NEARSHORE_POINT.longitude,
-      hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+      hourly: WIND_HOURLY,
       past_days: 0,
-      forecast_days: 16,
+      forecast_days: FORECAST_DAYS,
       timezone: "auto",
       wind_speed_unit: "kn"
     }
   );
 
-  const tideUrl = buildUrl(
-    "https://marine-api.open-meteo.com/v1/marine",
-    {
-      latitude: NEARSHORE_POINT.latitude,
-      longitude: NEARSHORE_POINT.longitude,
-      hourly: "sea_level_height_msl",
-      timezone: "auto",
-      past_days: 0,
-      forecast_days: 16,
-    }
-  );
-
   const [swell, wind, tide] = await Promise.all([
-    fetchJson<OpenMeteoMarineResponse>(swellUrl),
-    fetchJson<OpenMeteoWeatherResponse>(windUrl),
-    fetchJson<OpenMeteoMarineResponse>(tideUrl)
+    fetchSource<OpenMeteoMarineResponse>(swellUrl, (data, error) =>
+      sourceDebug("swell", MARINE_ENDPOINT, OFFSHORE_POINT, data?.hourly, {
+        model: activeSwellModel,
+        apiModel: apiSwellModel ?? "best_match",
+        error
+      })
+    ),
+    fetchSource<OpenMeteoWeatherResponse>(windUrl, (data, error) =>
+      sourceDebug("wind", WIND_ENDPOINT, NEARSHORE_POINT, data?.hourly, {
+        error
+      })
+    ),
+    fetchTideForecast()
   ]);
 
-  if (!swell.hourly) {
-    throw new Error("Open-Meteo swell response did not include hourly data");
-  }
+  const swellHourly = swell.data?.hourly;
+  const windHourly = wind.data?.hourly;
+  const swellByTime = swellHourly ? weatherIndexByTime(swellHourly) : new Map<string, number>();
+  const windByTime = windHourly ? weatherIndexByTime(windHourly) : new Map<string, number>();
+  const times = sourceRows(swellHourly, windHourly, tide.tideByTime);
 
-  if (!tide.hourly) {
-    throw new Error("Open-Meteo tide response did not include hourly data");
-  }
-
-  const swellHourly = swell.hourly;
-  const windByTime = weatherIndexByTime(wind.hourly);
-  const tideByTime = weatherIndexByTime(tide.hourly);
-
-  const rows = swellHourly.time
-    .map((time, index) => ({ time, index }))
-    .filter((_, rowIndex) => rowIndex % THREE_HOUR_STEP === 0)
-    .map(({ time, index }) => {
+  const rows = times
+    .map((time) => {
+      const swellIndex = swellByTime.get(time);
       const windIndex = windByTime.get(time);
-      const tideIndex = tideByTime.get(time);
-      const rankedSwell = rankSwellComponents(
-        {
-          height: byTime(swellHourly, index, "swell_wave_height"),
-          period: byTime(swellHourly, index, "swell_wave_period"),
-          peakPeriod: byTime(swellHourly, index, "swell_wave_peak_period"),
-          direction: byTime(swellHourly, index, "swell_wave_direction")
-        },
-        {
-          height: byTime(
-            swellHourly,
-            index,
-            "secondary_swell_wave_height"
-          ),
-          period: byTime(
-            swellHourly,
-            index,
-            "secondary_swell_wave_period"
-          ),
-          peakPeriod: null,
-          direction: byTime(
-            swellHourly,
-            index,
-            "secondary_swell_wave_direction"
-          )
-        }
-      );
+      const tideValue = tideValueForTime(tide.tideByTime, time);
+      const rankedSwell = rankedSwellRow(swellHourly, swellIndex);
 
       return {
         time,
         primarySwell: rankedSwell.primarySwell,
         secondarySwell: rankedSwell.secondarySwell,
-        wind: {
-          speed:
-            typeof windIndex === "number"
-              ? byTime(wind.hourly, windIndex, "wind_speed_10m")
-              : null,
-          gusts:
-            typeof windIndex === "number"
-              ? byTime(wind.hourly, windIndex, "wind_gusts_10m")
-              : null,
-          direction:
-            typeof windIndex === "number"
-              ? byTime(wind.hourly, windIndex, "wind_direction_10m")
-              : null
-        },
-        tide: {
-          seaLevelMsl:
-            typeof tideIndex === "number"
-              ? byTime(tide.hourly!, tideIndex, "sea_level_height_msl")
-              : null
-        }
+        wind: windRow(windHourly, windIndex),
+        tide: tideRow(tideValue)
       };
     });
 
   return {
     generatedAt: new Date().toISOString(),
+    activeSwellModel,
+    currentTide: tide.currentTide,
+    debug: {
+      sources: [swell.debug, wind.debug, tide.debug]
+    },
     rows
   };
 }
