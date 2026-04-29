@@ -235,6 +235,30 @@ h2 {
   text-transform: uppercase;
 }
 
+.forecast-table .tide-summary-row th,
+.forecast-table .tide-summary-row td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background: #f8fbfa;
+}
+
+.forecast-table .tide-summary-row th {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.forecast-table .tide-summary-row td {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.forecast-table .tide-summary-row td span {
+  display: inline-block;
+  margin-right: 18px;
+  color: inherit;
+}
+
 .forecast-table tbody tr:hover {
   background: rgba(4, 122, 128, 0.08);
 }
