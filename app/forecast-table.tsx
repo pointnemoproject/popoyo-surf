@@ -123,6 +123,16 @@ function formatTide(value: number | null | undefined) {
     : "—";
 }
 
+function formatTideEvent(value: SurfForecast["rows"][number]["tide"]) {
+  if (!value?.event) {
+    return formatTide(value?.seaLevelMsl);
+  }
+
+  const label = value.event.type === "high" ? "High" : "Low";
+
+  return `${label} ${formatTime(value.event.time)} ${formatTide(value.event.height)}`;
+}
+
 function formatGeneratedAt(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -264,7 +274,7 @@ export function ForecastTable() {
                       </strong>
                     </td>
                     <td>
-                      <strong>{formatTide(row.tide?.seaLevelMsl)}</strong>
+                      <strong>{formatTideEvent(row.tide)}</strong>
                     </td>
                   </tr>
                 </Fragment>
