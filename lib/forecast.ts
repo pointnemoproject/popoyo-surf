@@ -324,18 +324,35 @@ function stormglassExtremesToEvents(points: StormglassExtremePoint[] = []) {
   const tideEventsByTime = new Map<string, TideEvent>();
 
   for (const point of points) {
-    if (typeof point.height !== "number" || !point.type) {
+    const event = stormglassPointToEvent(point);
+
+    if (!event) {
       continue;
     }
 
-    tideEventsByTime.set(displayHourKeyForEvent(point.time), {
-      type: point.type,
-      time: localForecastKeyFromDate(new Date(point.time)),
-      height: point.height
-    });
+    tideEventsByTime.set(displayHourKeyForEvent(point.time), event);
   }
 
   return tideEventsByTime;
+}
+
+function stormglassPointToEvent(point: StormglassExtremePoint): TideEvent | null {
+  if (typeof point.height !== "number" || !point.type) {
+    return null;
+  }
+
+  return {
+    type: point.type,
+    time: localForecastKeyFromDate(new Date(point.time)),
+    height: point.height
+  };
+}
+
+function stormglassExtremesToEventList(points: StormglassExtremePoint[] = []) {
+  return points
+    .map(stormglassPointToEvent)
+    .filter((event): event is TideEvent => Boolean(event))
+    .sort((a, b) => a.time.localeCompare(b.time));
 }
 
 async function fetchTideForecast() {
@@ -357,6 +374,7 @@ async function fetchTideForecast() {
     return {
       tideByTime: new Map<string, NullableNumber>(),
       tideEventsByTime: new Map<string, TideEvent>(),
+      tideEvents: [],
       currentTide: null,
       debug: sourceDebug("tide", STORMGLASS_TIDE_EXTREMES_ENDPOINT, NEARSHORE_POINT, null, {
         datum: "MLLW",
@@ -375,6 +393,7 @@ async function fetchTideForecast() {
       }
     );
     const points = extremes.data ?? [];
+    const tideEvents = stormglassExtremesToEventList(points);
     const timestamps = points.map((point) =>
       localForecastKeyFromDate(new Date(point.time))
     );
@@ -383,6 +402,7 @@ async function fetchTideForecast() {
     return {
       tideByTime: new Map<string, NullableNumber>(),
       tideEventsByTime: stormglassExtremesToEvents(points),
+      tideEvents,
       currentTide: null,
       debug: {
         source: "tide",
@@ -402,6 +422,7 @@ async function fetchTideForecast() {
     return {
       tideByTime: new Map<string, NullableNumber>(),
       tideEventsByTime: new Map<string, TideEvent>(),
+      tideEvents: [],
       currentTide: null,
       debug: sourceDebug("tide", STORMGLASS_TIDE_EXTREMES_ENDPOINT, NEARSHORE_POINT, null, {
           datum: "MLLW",
@@ -599,6 +620,7 @@ export async function getForecast(
     generatedAt: new Date().toISOString(),
     activeSwellModel,
     currentTide: tide.currentTide,
+    tideEvents: tide.tideEvents,
     debug: {
       sources: [swell.debug, wind.debug, tide.debug]
     },
