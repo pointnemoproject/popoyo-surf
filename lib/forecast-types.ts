@@ -12,6 +12,12 @@ export const NEARSHORE_POINT = {
 
 export type NullableNumber = number | null;
 
+export type TideEvent = {
+  type: "high" | "low" | string;
+  time: string;
+  height: NullableNumber;
+};
+
 export type ForecastRow = {
   time: string;
   primarySwell: {
@@ -35,6 +41,7 @@ export type ForecastRow = {
   };
   tide: {
     seaLevelMsl: NullableNumber;
+    event?: TideEvent;
   } | null;
 };
 
@@ -53,6 +60,8 @@ export type ForecastSourceDebug = {
   apiModel?: string;
   datum?: string;
   extremesReturned?: number;
+  station?: string;
+  stationDistanceKm?: number;
   error?: string;
 };
 
