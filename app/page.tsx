@@ -41,10 +41,10 @@ export default function Home() {
       <section className="forecast-shell" aria-label="16-day forecast">
         <div className="table-heading">
           <div>
-            <p className="eyebrow">Every 3 hours</p>
+            <p className="eyebrow">Hourly · 5AM–6PM</p>
             <h2>16-day forecast</h2>
           </div>
-          <p>Server-fetched from Open-Meteo and cached for one hour.</p>
+          <p>Server-fetched forecast data with cached API responses.</p>
         </div>
 
         <ForecastTable />
