@@ -3,30 +3,50 @@
 import { Fragment, useEffect, useState } from "react";
 import type { SurfForecast } from "@/lib/forecast-types";
 
-function formatTime(value: string) {
-  const date = new Date(value);
+const SWELL_MODELS = [
+  { label: "Best match", value: "best_match" },
+  { label: "ECMWF WAM", value: "ecmwf_wam" },
+  { label: "GFS Wave", value: "gfs_wave" },
+  { label: "MeteoFrance MFWAM", value: "meteofrance_mfwam" }
+] as const;
 
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
+const DISPLAY_START_HOUR = 5;
+const DISPLAY_END_HOUR = 18;
+
+function localParts(value: string) {
+  const [date, time = "00:00"] = value.split("T");
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+
+  return { year, month, day, hour, minute };
+}
+
+function formatTime(value: string) {
+  const { hour, minute } = localParts(value);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
 function formatDay(value: string) {
+  const { year, month, day } = localParts(value);
+
   return new Intl.DateTimeFormat("en-US", {
     weekday: "long",
     month: "short",
     day: "numeric"
-  }).format(new Date(value));
+  }).format(new Date(year, month - 1, day));
 }
 
 function dayKey(value: string) {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(new Date(value));
+  return value.slice(0, 10);
+}
+
+function isSurfHour(value: string) {
+  const { hour } = localParts(value);
+
+  return hour >= DISPLAY_START_HOUR && hour <= DISPLAY_END_HOUR;
 }
 
 function formatHeight(value: number | null | undefined) {
@@ -98,9 +118,9 @@ function formatWind(
 }
 
 function formatTide(value: number | null | undefined) {
-  return typeof value === "number"
+  return typeof value === "number" && value >= 0
     ? `${(value * 3.28084).toFixed(1)} ft`
-    : "--";
+    : "—";
 }
 
 function formatGeneratedAt(value: string) {
@@ -116,13 +136,15 @@ function formatGeneratedAt(value: string) {
 export function ForecastTable() {
   const [forecast, setForecast] = useState<SurfForecast | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [swellModel, setSwellModel] = useState("best_match");
 
   useEffect(() => {
     let ignore = false;
 
     async function loadForecast() {
       try {
-        const response = await fetch("/api/forecast");
+        const params = new URLSearchParams({ swellModel });
+        const response = await fetch(`/api/forecast?${params.toString()}`);
 
         if (!response.ok) {
           throw new Error("Forecast request failed");
@@ -145,7 +167,7 @@ export function ForecastTable() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [swellModel]);
 
   if (error) {
     return <div className="forecast-state">{error}</div>;
@@ -156,11 +178,31 @@ export function ForecastTable() {
   }
 
   let previousDay = "";
+  const displayRows = forecast.rows.filter((row) => isSurfHour(row.time));
 
   return (
     <>
       <div className="updated-pill">
         Updated {formatGeneratedAt(forecast.generatedAt)}
+        {forecast.currentTide ? (
+          <span>Current tide: {formatTide(forecast.currentTide.seaLevelMsl)}</span>
+        ) : null}
+        <label className="model-selector">
+          Swell model
+          <select
+            value={swellModel}
+            onChange={(event) => setSwellModel(event.target.value)}
+          >
+            {SWELL_MODELS.map((model) => (
+              <option key={model.value} value={model.value}>
+                {model.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="forecast-debug">
+        Active swell model: {forecast.activeSwellModel}
       </div>
       <div className="forecast-table-wrap">
         <table className="forecast-table">
@@ -174,7 +216,7 @@ export function ForecastTable() {
             </tr>
           </thead>
           <tbody>
-            {forecast.rows.map((row) => {
+            {displayRows.map((row) => {
               const currentDay = dayKey(row.time);
               const showDay = currentDay !== previousDay;
               previousDay = currentDay;
@@ -222,7 +264,7 @@ export function ForecastTable() {
                       </strong>
                     </td>
                     <td>
-                      <strong>{formatTide(row.tide.seaLevelMsl)}</strong>
+                      <strong>{formatTide(row.tide?.seaLevelMsl)}</strong>
                     </td>
                   </tr>
                 </Fragment>
