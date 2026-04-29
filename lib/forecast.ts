@@ -6,7 +6,8 @@ import {
   OFFSHORE_POINT,
   type NullableNumber,
   type ForecastSourceDebug,
-  type SurfForecast
+  type SurfForecast,
+  type TideEvent
 } from "@/lib/forecast-types";
 
 export { FORECAST_REVALIDATE_SECONDS, NEARSHORE_POINT, OFFSHORE_POINT };
@@ -66,6 +67,12 @@ type StormglassTideResponse = {
 
 type StormglassExtremesResponse = {
   data?: StormglassExtremePoint[];
+  meta?: {
+    station?: {
+      name?: string;
+      distance?: number;
+    };
+  };
 };
 
 type OpenMeteoWeatherResponse = {
@@ -218,6 +225,8 @@ function sourceDebug(
     apiModel?: string;
     datum?: string;
     extremesReturned?: number;
+    station?: string;
+    stationDistanceKm?: number;
     error?: string;
   } = {}
 ): ForecastSourceDebug {
@@ -298,6 +307,37 @@ async function fetchSource<T>(
   }
 }
 
+function displayHourKeyForEvent(time: string) {
+  const eventDate = new Date(time);
+  const roundedDate = new Date(eventDate);
+
+  if (roundedDate.getUTCMinutes() >= 30) {
+    roundedDate.setUTCHours(roundedDate.getUTCHours() + 1);
+  }
+
+  roundedDate.setUTCMinutes(0, 0, 0);
+
+  return localForecastKeyFromDate(roundedDate);
+}
+
+function stormglassExtremesToEvents(points: StormglassExtremePoint[] = []) {
+  const tideEventsByTime = new Map<string, TideEvent>();
+
+  for (const point of points) {
+    if (typeof point.height !== "number" || !point.type) {
+      continue;
+    }
+
+    tideEventsByTime.set(displayHourKeyForEvent(point.time), {
+      type: point.type,
+      time: localForecastKeyFromDate(new Date(point.time)),
+      height: point.height
+    });
+  }
+
+  return tideEventsByTime;
+}
+
 async function fetchTideForecast() {
   const apiKey = process.env.STORMGLASS_API_KEY;
   const { start, end } = stormglassLocalDateWindow();
@@ -308,86 +348,70 @@ async function fetchTideForecast() {
     end: end.toISOString(),
     datum: "MLLW"
   };
-  const seaLevelUrl = buildUrl(STORMGLASS_TIDE_ENDPOINT, baseParams);
+  const extremesUrl = buildUrl(
+    STORMGLASS_TIDE_EXTREMES_ENDPOINT,
+    baseParams
+  );
 
   if (!apiKey) {
     return {
       tideByTime: new Map<string, NullableNumber>(),
+      tideEventsByTime: new Map<string, TideEvent>(),
       currentTide: null,
-      debug: sourceDebug("tide", STORMGLASS_TIDE_ENDPOINT, NEARSHORE_POINT, null, {
+      debug: sourceDebug("tide", STORMGLASS_TIDE_EXTREMES_ENDPOINT, NEARSHORE_POINT, null, {
         datum: "MLLW",
+        requestedForecastDays: TIDE_FORECAST_DAYS,
         error: "STORMGLASS_API_KEY is not configured"
       })
     };
   }
 
   try {
-    const seaLevel = await fetchJson<StormglassTideResponse>(seaLevelUrl, {
-      headers: { Authorization: apiKey },
-      revalidate: TIDE_REVALIDATE_SECONDS
-    });
-    const points = seaLevel.data ?? [];
+    const extremes = await fetchJson<StormglassExtremesResponse>(
+      extremesUrl,
+      {
+        headers: { Authorization: apiKey },
+        revalidate: TIDE_REVALIDATE_SECONDS
+      }
+    );
+    const points = extremes.data ?? [];
     const timestamps = points.map((point) =>
       localForecastKeyFromDate(new Date(point.time))
     );
+    const station = extremes.meta?.station;
 
     return {
-      tideByTime: stormglassPointsToHourly(points),
+      tideByTime: new Map<string, NullableNumber>(),
+      tideEventsByTime: stormglassExtremesToEvents(points),
       currentTide: null,
       debug: {
         source: "tide",
-        endpoint: STORMGLASS_TIDE_ENDPOINT,
+        endpoint: STORMGLASS_TIDE_EXTREMES_ENDPOINT,
         coordinates: NEARSHORE_POINT,
         requestedForecastDays: TIDE_FORECAST_DAYS,
-        hourlyTimestampsReturned: timestamps.length,
+        hourlyTimestampsReturned: 0,
         firstTimestamp: timestamps[0] ?? null,
         lastTimestamp: timestamps.at(-1) ?? null,
-        datum: "MLLW"
+        datum: "MLLW",
+        extremesReturned: points.length,
+        station: station?.name,
+        stationDistanceKm: station?.distance
       }
     };
-  } catch (seaLevelError) {
-    const extremesUrl = buildUrl(
-      STORMGLASS_TIDE_EXTREMES_ENDPOINT,
-      baseParams
-    );
-
-    try {
-      const extremes = await fetchJson<StormglassExtremesResponse>(
-        extremesUrl,
-        {
-          headers: { Authorization: apiKey },
-          revalidate: TIDE_REVALIDATE_SECONDS
-        }
-      );
-      const points = extremes.data ?? [];
-
-      return {
-        tideByTime: new Map<string, NullableNumber>(),
-        currentTide: null,
-        debug: sourceDebug("tide", STORMGLASS_TIDE_EXTREMES_ENDPOINT, NEARSHORE_POINT, null, {
-          datum: "MLLW",
-          extremesReturned: points.length,
-          requestedForecastDays: TIDE_FORECAST_DAYS,
-          error:
-            seaLevelError instanceof Error
-              ? `Sea-level unavailable; using extremes metadata only. ${seaLevelError.message}`
-              : "Sea-level unavailable; using extremes metadata only."
-        })
-      };
-    } catch (extremesError) {
-      return {
-        tideByTime: new Map<string, NullableNumber>(),
-        currentTide: null,
-        debug: sourceDebug("tide", STORMGLASS_TIDE_ENDPOINT, NEARSHORE_POINT, null, {
+  } catch (extremesError) {
+    return {
+      tideByTime: new Map<string, NullableNumber>(),
+      tideEventsByTime: new Map<string, TideEvent>(),
+      currentTide: null,
+      debug: sourceDebug("tide", STORMGLASS_TIDE_EXTREMES_ENDPOINT, NEARSHORE_POINT, null, {
           datum: "MLLW",
           requestedForecastDays: TIDE_FORECAST_DAYS,
           error:
-            extremesError instanceof Error
-              ? extremesError.message
-              : "Stormglass tide request failed"
-        })
-      };
-    }
+          extremesError instanceof Error
+            ? extremesError.message
+            : "Stormglass tide request failed"
+      })
+    };
   }
 }
 
@@ -403,13 +427,15 @@ function tideValueForTime(
 function sourceRows(
   swellHourly: MarineHourly | undefined,
   windHourly: WeatherHourly | undefined,
-  tideByTime: Map<string, NullableNumber>
+  tideByTime: Map<string, NullableNumber>,
+  tideEventsByTime: Map<string, TideEvent>
 ) {
   return Array.from(
     new Set([
       ...(swellHourly?.time ?? []),
       ...(windHourly?.time ?? []),
-      ...tideByTime.keys()
+      ...tideByTime.keys(),
+      ...tideEventsByTime.keys()
     ])
   )
     .sort()
@@ -420,7 +446,14 @@ function shouldUseTideValue(value: NullableNumber) {
   return typeof value === "number" && value >= 0;
 }
 
-function tideRow(value: NullableNumber) {
+function tideRow(value: NullableNumber, event?: TideEvent) {
+  if (event) {
+    return {
+      seaLevelMsl: event.height,
+      event
+    };
+  }
+
   return shouldUseTideValue(value) ? { seaLevelMsl: value } : null;
 }
 
@@ -538,13 +571,19 @@ export async function getForecast(
   const windHourly = wind.data?.hourly;
   const swellByTime = swellHourly ? weatherIndexByTime(swellHourly) : new Map<string, number>();
   const windByTime = windHourly ? weatherIndexByTime(windHourly) : new Map<string, number>();
-  const times = sourceRows(swellHourly, windHourly, tide.tideByTime);
+  const times = sourceRows(
+    swellHourly,
+    windHourly,
+    tide.tideByTime,
+    tide.tideEventsByTime
+  );
 
   const rows = times
     .map((time) => {
       const swellIndex = swellByTime.get(time);
       const windIndex = windByTime.get(time);
       const tideValue = tideValueForTime(tide.tideByTime, time);
+      const tideEvent = tide.tideEventsByTime.get(time);
       const rankedSwell = rankedSwellRow(swellHourly, swellIndex);
 
       return {
@@ -552,7 +591,7 @@ export async function getForecast(
         primarySwell: rankedSwell.primarySwell,
         secondarySwell: rankedSwell.secondarySwell,
         wind: windRow(windHourly, windIndex),
-        tide: tideRow(tideValue)
+        tide: tideRow(tideValue, tideEvent)
       };
     });
 
