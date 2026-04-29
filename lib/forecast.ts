@@ -43,6 +43,15 @@ type OpenMeteoMarineResponse = {
 type StormglassSeaLevelPoint = {
   time: string;
   height?: NullableNumber;
+  sg?: NullableNumber;
+  noaa?: NullableNumber;
+  meteo?: NullableNumber;
+  dwd?: NullableNumber;
+  meto?: NullableNumber;
+  fcoo?: NullableNumber;
+  fmi?: NullableNumber;
+  yr?: NullableNumber;
+  smhi?: NullableNumber;
 };
 
 type StormglassExtremePoint = {
@@ -82,6 +91,7 @@ const STORMGLASS_TIDE_EXTREMES_ENDPOINT =
 const SWELL_HOURLY =
   "swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,swell_wave_peak_period";
 const WIND_HOURLY = "wind_speed_10m,wind_direction_10m,wind_gusts_10m";
+const TIDE_FORECAST_DAYS = 10;
 const TIDE_REVALIDATE_SECONDS = 6 * 60 * 60;
 
 const SWELL_MODEL_API_VALUES: Record<SwellModel, string | null> = {
@@ -166,9 +176,24 @@ function stormglassLocalDateWindow() {
   const [date] = localForecastKeyFromDate(new Date()).split("T");
   const start = new Date(`${date}T06:00:00.000Z`);
   const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + FORECAST_DAYS);
+  end.setUTCDate(end.getUTCDate() + TIDE_FORECAST_DAYS);
 
   return { start, end };
+}
+
+function stormglassSeaLevel(point: StormglassSeaLevelPoint) {
+  return [
+    point.height,
+    point.sg,
+    point.noaa,
+    point.meteo,
+    point.dwd,
+    point.meto,
+    point.fcoo,
+    point.fmi,
+    point.yr,
+    point.smhi
+  ].find((value): value is number => typeof value === "number") ?? null;
 }
 
 function stormglassPointsToHourly(points: StormglassSeaLevelPoint[] = []) {
@@ -176,7 +201,7 @@ function stormglassPointsToHourly(points: StormglassSeaLevelPoint[] = []) {
 
   for (const point of points) {
     const time = localForecastKeyFromDate(new Date(point.time));
-    tideByTime.set(time, typeof point.height === "number" ? point.height : null);
+    tideByTime.set(time, stormglassSeaLevel(point));
   }
 
   return tideByTime;
@@ -188,6 +213,7 @@ function sourceDebug(
   coordinates: { latitude: number; longitude: number },
   hourly: { time: string[] } | null | undefined,
   options: {
+    requestedForecastDays?: number;
     model?: string;
     apiModel?: string;
     datum?: string;
@@ -312,7 +338,7 @@ async function fetchTideForecast() {
         source: "tide",
         endpoint: STORMGLASS_TIDE_ENDPOINT,
         coordinates: NEARSHORE_POINT,
-        requestedForecastDays: FORECAST_DAYS,
+        requestedForecastDays: TIDE_FORECAST_DAYS,
         hourlyTimestampsReturned: timestamps.length,
         firstTimestamp: timestamps[0] ?? null,
         lastTimestamp: timestamps.at(-1) ?? null,
@@ -341,6 +367,7 @@ async function fetchTideForecast() {
         debug: sourceDebug("tide", STORMGLASS_TIDE_EXTREMES_ENDPOINT, NEARSHORE_POINT, null, {
           datum: "MLLW",
           extremesReturned: points.length,
+          requestedForecastDays: TIDE_FORECAST_DAYS,
           error:
             seaLevelError instanceof Error
               ? `Sea-level unavailable; using extremes metadata only. ${seaLevelError.message}`
@@ -353,6 +380,7 @@ async function fetchTideForecast() {
         currentTide: null,
         debug: sourceDebug("tide", STORMGLASS_TIDE_ENDPOINT, NEARSHORE_POINT, null, {
           datum: "MLLW",
+          requestedForecastDays: TIDE_FORECAST_DAYS,
           error:
             extremesError instanceof Error
               ? extremesError.message
