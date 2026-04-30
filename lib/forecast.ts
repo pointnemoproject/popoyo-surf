@@ -318,6 +318,40 @@ function aggregateWaveEnergy(...swells: SwellComponent[]) {
     : null;
 }
 
+function hasSwellData(swell: SwellComponent) {
+  return (
+    typeof swell.height === "number" ||
+    typeof swell.period === "number" ||
+    typeof swell.direction === "number"
+  );
+}
+
+function componentKey(swell: SwellComponent) {
+  const height =
+    typeof swell.height === "number" ? swell.height.toFixed(1) : "null";
+  const period =
+    typeof swell.period === "number" ? Math.round(swell.period).toString() : "null";
+  const direction =
+    typeof swell.direction === "number"
+      ? Math.round(swell.direction).toString()
+      : "null";
+
+  return `${height}-${period}-${direction}`;
+}
+
+function fallbackSwellComponent(
+  candidates: SwellComponent[],
+  used: SwellComponent[]
+) {
+  const usedKeys = new Set(used.map(componentKey));
+
+  return (
+    candidates.find(
+      (candidate) => hasSwellData(candidate) && !usedKeys.has(componentKey(candidate))
+    ) ?? emptySwellComponent()
+  );
+}
+
 async function fetchSource<T>(
   url: string,
   debugFactory: (data: T | null, error?: string) => ForecastSourceDebug
@@ -641,6 +675,15 @@ export async function getForecast(): Promise<SurfForecast> {
         secondarySwellHourly,
         secondarySwellIndex
       );
+      const tertiarySwell = fallbackSwellComponent(
+        [
+          rankedPrimarySwell.tertiarySwell,
+          rankedPrimarySwell.secondarySwell,
+          rankedSecondarySwell.secondarySwell,
+          rankedSecondarySwell.tertiarySwell
+        ],
+        [rankedPrimarySwell.primarySwell, rankedSecondarySwell.primarySwell]
+      );
 
       return {
         time,
@@ -648,11 +691,11 @@ export async function getForecast(): Promise<SurfForecast> {
         waveEnergy: aggregateWaveEnergy(
           rankedPrimarySwell.primarySwell,
           rankedSecondarySwell.primarySwell,
-          rankedPrimarySwell.tertiarySwell
+          tertiarySwell
         ),
         primarySwell: rankedPrimarySwell.primarySwell,
         secondarySwell: rankedSecondarySwell.primarySwell,
-        tertiarySwell: rankedPrimarySwell.tertiarySwell,
+        tertiarySwell,
         wind: windRow(windHourly, windIndex),
         tide: tideRow(tideValue, tideEvent)
       };
