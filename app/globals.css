@@ -181,6 +181,13 @@ h2 {
   background: var(--surface-strong);
 }
 
+.forecast-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
 .forecast-table {
   width: 100%;
   min-width: 1340px;
@@ -296,6 +303,97 @@ h2 {
   transform: none;
 }
 
+.tide-panel {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 14px;
+  min-height: 260px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.08);
+}
+
+.tide-panel__header {
+  display: grid;
+  gap: 3px;
+}
+
+.tide-panel__header span {
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tide-panel__header strong {
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.tide-curve {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.tide-curve__line {
+  fill: none;
+  stroke: var(--accent-dark);
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+.tide-curve circle {
+  fill: var(--surface-strong);
+  stroke: var(--accent-dark);
+  stroke-width: 2;
+}
+
+.tide-panel__range,
+.tide-events div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tide-panel__range {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.tide-events {
+  display: grid;
+  gap: 8px;
+}
+
+.tide-events div {
+  align-items: baseline;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.tide-events span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.tide-events strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+  text-align: right;
+}
+
+.tide-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 @media (max-width: 820px) {
   .hero {
     min-height: 58vh;
@@ -315,6 +413,15 @@ h2 {
   .forecast-shell {
     width: calc(100% - 20px);
     margin-top: 20px;
+  }
+
+  .forecast-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .tide-panel {
+    position: static;
+    order: -1;
   }
 
   .forecast-table th,
