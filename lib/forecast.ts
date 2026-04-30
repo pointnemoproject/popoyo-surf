@@ -82,7 +82,6 @@ type OpenMeteoWeatherResponse = {
 
 export const SWELL_MODELS = [
   "best_match",
-  "ecmwf_wam",
   "gfs_wave",
   "meteofrance_mfwam"
 ] as const;
@@ -104,7 +103,6 @@ const TIDE_REVALIDATE_SECONDS = 6 * 60 * 60;
 
 const SWELL_MODEL_API_VALUES: Record<SwellModel, string | null> = {
   best_match: null,
-  ecmwf_wam: "ecmwf_wam",
   gfs_wave: "ncep_gfswave025",
   meteofrance_mfwam: "meteofrance_wave"
 };
@@ -269,10 +267,7 @@ function rankSwellComponents(
     const energy = energyScore(component.height, component.period);
 
     return {
-      component: {
-        ...component,
-        energy
-      },
+      component,
       energyScore: energy ?? Number.NEGATIVE_INFINITY,
       index
     };
@@ -284,6 +279,20 @@ function rankSwellComponents(
     primarySwell: components[0].component,
     secondarySwell: components[1].component
   };
+}
+
+function aggregateWaveEnergy(
+  primarySwell: ReturnType<typeof rankSwellComponents>["primarySwell"],
+  secondarySwell: ReturnType<typeof rankSwellComponents>["secondarySwell"]
+) {
+  const energies = [
+    energyScore(primarySwell.height, primarySwell.period),
+    energyScore(secondarySwell.height, secondarySwell.period)
+  ].filter((value): value is number => typeof value === "number");
+
+  return energies.length
+    ? energies.reduce((total, value) => total + value, 0)
+    : null;
 }
 
 async function fetchSource<T>(
@@ -620,6 +629,10 @@ export async function getForecast(
       return {
         time,
         waveHeight: waveHeightRow(swellHourly, swellIndex),
+        waveEnergy: aggregateWaveEnergy(
+          rankedSwell.primarySwell,
+          rankedSwell.secondarySwell
+        ),
         primarySwell: rankedSwell.primarySwell,
         secondarySwell: rankedSwell.secondarySwell,
         wind: windRow(windHourly, windIndex),
