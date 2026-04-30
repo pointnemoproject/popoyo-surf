@@ -1,4 +1,4 @@
-# Ryan's Surf Report
+# Popoyo Surf
 
 A Vercel-ready Next.js MVP for a 16-day Popoyo surf forecast using Open-Meteo APIs.
 
