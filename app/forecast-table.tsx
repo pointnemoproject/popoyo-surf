@@ -234,6 +234,7 @@ export function ForecastTable() {
           <thead>
             <tr>
               <th scope="col">Time</th>
+              <th scope="col">Wave Height</th>
               <th scope="col">Primary Swell</th>
               <th scope="col">Secondary Swell</th>
               <th scope="col">Wind</th>
@@ -251,11 +252,11 @@ export function ForecastTable() {
                   {showDay ? (
                     <>
                       <tr className="day-row" key={`${row.time}-day`}>
-                        <th colSpan={5}>{formatDay(row.time)}</th>
+                        <th colSpan={6}>{formatDay(row.time)}</th>
                       </tr>
                       <tr className="tide-summary-row" key={`${row.time}-tides`}>
                         <th scope="row">Tides</th>
-                        <td colSpan={4}>
+                        <td colSpan={5}>
                           {tideEventsByDay[currentDay]?.length ? (
                             tideEventsByDay[currentDay].map((event) => (
                               <span key={`${event.type}-${event.time}`}>
@@ -271,6 +272,9 @@ export function ForecastTable() {
                   ) : null}
                   <tr>
                     <th scope="row">{formatTime(row.time)}</th>
+                    <td>
+                      <strong>{formatHeight(row.waveHeight)}</strong>
+                    </td>
                     <td>
                       <strong>
                         {formatSwell(
