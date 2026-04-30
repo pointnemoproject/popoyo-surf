@@ -80,14 +80,6 @@ type OpenMeteoWeatherResponse = {
   hourly?: WeatherHourly;
 };
 
-export const SWELL_MODELS = [
-  "best_match",
-  "gfs_wave",
-  "meteofrance_mfwam"
-] as const;
-
-export type SwellModel = (typeof SWELL_MODELS)[number];
-
 const FORECAST_DAYS = 16;
 const MARINE_ENDPOINT = "https://marine-api.open-meteo.com/v1/marine";
 const WIND_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
@@ -100,12 +92,9 @@ const SWELL_HOURLY =
 const WIND_HOURLY = "wind_speed_10m,wind_direction_10m,wind_gusts_10m";
 const TIDE_FORECAST_DAYS = 10;
 const TIDE_REVALIDATE_SECONDS = 6 * 60 * 60;
-
-const SWELL_MODEL_API_VALUES: Record<SwellModel, string | null> = {
-  best_match: null,
-  gfs_wave: "ncep_gfswave025",
-  meteofrance_mfwam: "meteofrance_wave"
-};
+const PRIMARY_SWELL_MODEL = "best_match";
+const SECONDARY_SWELL_MODEL = "gfs_wave";
+const SECONDARY_SWELL_API_MODEL = "ncep_gfswave025";
 
 function buildUrl(baseUrl: string, params: Record<string, string | number>) {
   const url = new URL(baseUrl);
@@ -134,12 +123,6 @@ async function fetchJson<T>(
   }
 
   return response.json() as Promise<T>;
-}
-
-function normalizeSwellModel(value: string | null | undefined): SwellModel {
-  return SWELL_MODELS.includes(value as SwellModel)
-    ? (value as SwellModel)
-    : "best_match";
 }
 
 function byTime<T extends { time: string[] }>(
@@ -456,14 +439,16 @@ function tideValueForTime(
 }
 
 function sourceRows(
-  swellHourly: MarineHourly | undefined,
+  primarySwellHourly: MarineHourly | undefined,
+  secondarySwellHourly: MarineHourly | undefined,
   windHourly: WeatherHourly | undefined,
   tideByTime: Map<string, NullableNumber>,
   tideEventsByTime: Map<string, TideEvent>
 ) {
   return Array.from(
     new Set([
-      ...(swellHourly?.time ?? []),
+      ...(primarySwellHourly?.time ?? []),
+      ...(secondarySwellHourly?.time ?? []),
       ...(windHourly?.time ?? []),
       ...tideByTime.keys(),
       ...tideEventsByTime.keys()
@@ -558,12 +543,22 @@ function waveHeightRow(
     : null;
 }
 
-export async function getForecast(
-  options: { swellModel?: string } = {}
-): Promise<SurfForecast> {
-  const activeSwellModel = normalizeSwellModel(options.swellModel);
-  const apiSwellModel = SWELL_MODEL_API_VALUES[activeSwellModel];
-  const swellUrl = buildUrl(
+export async function getForecast(): Promise<SurfForecast> {
+  const primarySwellUrl = buildUrl(
+    MARINE_ENDPOINT,
+    {
+      latitude: OFFSHORE_POINT.latitude,
+      longitude: OFFSHORE_POINT.longitude,
+      hourly: SWELL_HOURLY,
+      timezone: "auto",
+      past_days: 0,
+      forecast_days: FORECAST_DAYS,
+      length_unit: "imperial",
+      wind_speed_unit: "kn"
+    }
+  );
+
+  const secondarySwellUrl = buildUrl(
     MARINE_ENDPOINT,
     {
       latitude: OFFSHORE_POINT.latitude,
@@ -574,7 +569,7 @@ export async function getForecast(
       forecast_days: FORECAST_DAYS,
       length_unit: "imperial",
       wind_speed_unit: "kn",
-      ...(apiSwellModel ? { models: apiSwellModel } : {})
+      models: SECONDARY_SWELL_API_MODEL
     }
   );
 
@@ -591,11 +586,18 @@ export async function getForecast(
     }
   );
 
-  const [swell, wind, tide] = await Promise.all([
-    fetchSource<OpenMeteoMarineResponse>(swellUrl, (data, error) =>
-      sourceDebug("swell", MARINE_ENDPOINT, OFFSHORE_POINT, data?.hourly, {
-        model: activeSwellModel,
-        apiModel: apiSwellModel ?? "best_match",
+  const [primarySwell, secondarySwell, wind, tide] = await Promise.all([
+    fetchSource<OpenMeteoMarineResponse>(primarySwellUrl, (data, error) =>
+      sourceDebug("primary_swell", MARINE_ENDPOINT, OFFSHORE_POINT, data?.hourly, {
+        model: PRIMARY_SWELL_MODEL,
+        apiModel: PRIMARY_SWELL_MODEL,
+        error
+      })
+    ),
+    fetchSource<OpenMeteoMarineResponse>(secondarySwellUrl, (data, error) =>
+      sourceDebug("secondary_swell", MARINE_ENDPOINT, OFFSHORE_POINT, data?.hourly, {
+        model: SECONDARY_SWELL_MODEL,
+        apiModel: SECONDARY_SWELL_API_MODEL,
         error
       })
     ),
@@ -607,12 +609,19 @@ export async function getForecast(
     fetchTideForecast()
   ]);
 
-  const swellHourly = swell.data?.hourly;
+  const primarySwellHourly = primarySwell.data?.hourly;
+  const secondarySwellHourly = secondarySwell.data?.hourly;
   const windHourly = wind.data?.hourly;
-  const swellByTime = swellHourly ? weatherIndexByTime(swellHourly) : new Map<string, number>();
+  const primarySwellByTime = primarySwellHourly
+    ? weatherIndexByTime(primarySwellHourly)
+    : new Map<string, number>();
+  const secondarySwellByTime = secondarySwellHourly
+    ? weatherIndexByTime(secondarySwellHourly)
+    : new Map<string, number>();
   const windByTime = windHourly ? weatherIndexByTime(windHourly) : new Map<string, number>();
   const times = sourceRows(
-    swellHourly,
+    primarySwellHourly,
+    secondarySwellHourly,
     windHourly,
     tide.tideByTime,
     tide.tideEventsByTime
@@ -620,21 +629,29 @@ export async function getForecast(
 
   const rows = times
     .map((time) => {
-      const swellIndex = swellByTime.get(time);
+      const primarySwellIndex = primarySwellByTime.get(time);
+      const secondarySwellIndex = secondarySwellByTime.get(time);
       const windIndex = windByTime.get(time);
       const tideValue = tideValueForTime(tide.tideByTime, time);
       const tideEvent = tide.tideEventsByTime.get(time);
-      const rankedSwell = rankedSwellRow(swellHourly, swellIndex);
+      const rankedPrimarySwell = rankedSwellRow(
+        primarySwellHourly,
+        primarySwellIndex
+      );
+      const rankedSecondarySwell = rankedSwellRow(
+        secondarySwellHourly,
+        secondarySwellIndex
+      );
 
       return {
         time,
-        waveHeight: waveHeightRow(swellHourly, swellIndex),
+        waveHeight: waveHeightRow(primarySwellHourly, primarySwellIndex),
         waveEnergy: aggregateWaveEnergy(
-          rankedSwell.primarySwell,
-          rankedSwell.secondarySwell
+          rankedPrimarySwell.primarySwell,
+          rankedSecondarySwell.primarySwell
         ),
-        primarySwell: rankedSwell.primarySwell,
-        secondarySwell: rankedSwell.secondarySwell,
+        primarySwell: rankedPrimarySwell.primarySwell,
+        secondarySwell: rankedSecondarySwell.primarySwell,
         wind: windRow(windHourly, windIndex),
         tide: tideRow(tideValue, tideEvent)
       };
@@ -642,11 +659,11 @@ export async function getForecast(
 
   return {
     generatedAt: new Date().toISOString(),
-    activeSwellModel,
+    activeSwellModel: `${PRIMARY_SWELL_MODEL} primary / ${SECONDARY_SWELL_MODEL} secondary`,
     currentTide: tide.currentTide,
     tideEvents: tide.tideEvents,
     debug: {
-      sources: [swell.debug, wind.debug, tide.debug]
+      sources: [primarySwell.debug, secondarySwell.debug, wind.debug, tide.debug]
     },
     rows
   };
