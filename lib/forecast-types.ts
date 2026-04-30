@@ -21,19 +21,18 @@ export type TideEvent = {
 export type ForecastRow = {
   time: string;
   waveHeight: NullableNumber;
+  waveEnergy: NullableNumber;
   primarySwell: {
     height: NullableNumber;
     period: NullableNumber;
     peakPeriod: NullableNumber;
     direction: NullableNumber;
-    energy: NullableNumber;
   };
   secondarySwell: {
     height: NullableNumber;
     period: NullableNumber;
     peakPeriod: NullableNumber;
     direction: NullableNumber;
-    energy: NullableNumber;
   };
   wind: {
     speed: NullableNumber;
