@@ -145,7 +145,7 @@ h2 {
 }
 
 .forecast-table-wrap {
-  overflow-x: auto;
+  overflow-x: visible;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-strong);
@@ -183,13 +183,14 @@ h2 {
 
 .forecast-table {
   width: 100%;
-  min-width: 1340px;
+  min-width: 0;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .forecast-table th,
 .forecast-table td {
-  padding: 9px 18px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: middle;
@@ -208,9 +209,8 @@ h2 {
 }
 
 .forecast-table tbody th {
-  width: 180px;
   color: var(--ink);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   font-weight: 800;
 }
 
@@ -231,22 +231,47 @@ h2 {
 }
 
 .forecast-table td {
-  min-width: 145px;
+  min-width: 0;
+}
+
+.forecast-table th:nth-child(1),
+.forecast-table td:nth-child(1) {
+  width: 8%;
+}
+
+.forecast-table th:nth-child(2),
+.forecast-table td:nth-child(2) {
+  width: 9%;
 }
 
 .forecast-table th:nth-child(3),
-.forecast-table th:nth-child(4),
-.forecast-table th:nth-child(5),
 .forecast-table td:nth-child(3),
+.forecast-table th:nth-child(4),
 .forecast-table td:nth-child(4),
+.forecast-table th:nth-child(5),
 .forecast-table td:nth-child(5) {
-  min-width: 175px;
+  width: 15%;
+}
+
+.forecast-table th:nth-child(6),
+.forecast-table td:nth-child(6) {
+  width: 13%;
+}
+
+.forecast-table th:nth-child(7),
+.forecast-table td:nth-child(7) {
+  width: 7%;
+}
+
+.forecast-table th:nth-child(8),
+.forecast-table td:nth-child(8) {
+  width: 18%;
 }
 
 .forecast-table td strong {
   display: block;
   margin-bottom: 2px;
-  font-size: 0.98rem;
+  font-size: 0.9rem;
   letter-spacing: 0;
 }
 
@@ -261,8 +286,8 @@ h2 {
 .metric-line {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  white-space: nowrap;
+  gap: 6px;
+  max-width: 100%;
 }
 
 .metric-line strong {
@@ -270,13 +295,13 @@ h2 {
 }
 
 .direction-arrow {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   display: inline-grid;
   place-items: center;
-  flex: 0 0 16px;
+  flex: 0 0 14px;
   color: var(--swell);
-  font-size: 1.05rem;
+  font-size: 0.98rem;
   font-weight: 900;
   line-height: 1;
   transform: rotate(var(--direction));
@@ -298,7 +323,7 @@ h2 {
 
 .tide-cell {
   position: relative;
-  min-height: 42px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -307,21 +332,27 @@ h2 {
 .tide-cell strong {
   position: relative;
   z-index: 1;
+  padding: 1px 4px 1px 0;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.76),
+    0 -1px 0 rgba(255, 255, 255, 0.76),
+    1px 0 0 rgba(255, 255, 255, 0.76);
 }
 
 .tide-cell__curve {
   position: absolute;
-  inset: -12px 0;
+  inset: -16px 0;
   width: 100%;
-  height: calc(100% + 24px);
+  height: calc(100% + 32px);
   pointer-events: none;
 }
 
 .tide-cell__curve path {
   fill: none;
-  stroke: rgba(8, 145, 178, 0.34);
+  stroke: rgba(8, 145, 178, 0.2);
   stroke-linecap: round;
-  stroke-width: 5;
+  stroke-linejoin: round;
+  stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
 
@@ -348,6 +379,14 @@ h2 {
 
   .forecast-table th,
   .forecast-table td {
-    padding: 10px 12px;
+    padding: 8px 8px;
+  }
+
+  .forecast-table {
+    min-width: 860px;
+  }
+
+  .forecast-table-wrap {
+    overflow-x: auto;
   }
 }
