@@ -14,6 +14,7 @@ export { FORECAST_REVALIDATE_SECONDS, NEARSHORE_POINT, OFFSHORE_POINT };
 
 type MarineHourly = {
   time: string[];
+  wave_height?: NullableNumber[];
   swell_wave_height?: NullableNumber[];
   swell_wave_direction?: NullableNumber[];
   swell_wave_period?: NullableNumber[];
@@ -96,7 +97,7 @@ const STORMGLASS_TIDE_ENDPOINT =
 const STORMGLASS_TIDE_EXTREMES_ENDPOINT =
   "https://api.stormglass.io/v2/tide/extremes/point";
 const SWELL_HOURLY =
-  "swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,swell_wave_peak_period";
+  "wave_height,swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,swell_wave_peak_period";
 const WIND_HOURLY = "wind_speed_10m,wind_direction_10m,wind_gusts_10m";
 const TIDE_FORECAST_DAYS = 10;
 const TIDE_REVALIDATE_SECONDS = 6 * 60 * 60;
@@ -539,6 +540,15 @@ function rankedSwellRow(
   );
 }
 
+function waveHeightRow(
+  swellHourly: MarineHourly | undefined,
+  swellIndex: number | undefined
+) {
+  return typeof swellIndex === "number" && swellHourly
+    ? byTime(swellHourly, swellIndex, "wave_height")
+    : null;
+}
+
 export async function getForecast(
   options: { swellModel?: string } = {}
 ): Promise<SurfForecast> {
@@ -609,6 +619,7 @@ export async function getForecast(
 
       return {
         time,
+        waveHeight: waveHeightRow(swellHourly, swellIndex),
         primarySwell: rankedSwell.primarySwell,
         secondarySwell: rankedSwell.secondarySwell,
         wind: windRow(windHourly, windIndex),
