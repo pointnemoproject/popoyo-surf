@@ -126,6 +126,14 @@ function formatGeneratedAt(value: string) {
   }).format(new Date(value));
 }
 
+function formatTidePanelTime(value: string) {
+  const { hour, minute } = localParts(value);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+
+  return `${displayHour}${minute ? `:${String(minute).padStart(2, "0")}` : ""}${suffix}`;
+}
+
 function DirectionArrow({
   degrees,
   tone = "swell"
@@ -191,6 +199,135 @@ function WindCell({
   );
 }
 
+function tideEventFeet(event: SurfForecast["tideEvents"][number]) {
+  return typeof event.height === "number" && event.height >= 0
+    ? event.height * 3.28084
+    : null;
+}
+
+function tideEventTimeValue(event: SurfForecast["tideEvents"][number]) {
+  return new Date(`${event.time}:00-06:00`).getTime();
+}
+
+function buildTideCurve(events: SurfForecast["tideEvents"]) {
+  const plotted = events
+    .map((event) => ({
+      event,
+      feet: tideEventFeet(event),
+      time: tideEventTimeValue(event)
+    }))
+    .filter(
+      (point): point is {
+        event: SurfForecast["tideEvents"][number];
+        feet: number;
+        time: number;
+      } => typeof point.feet === "number" && Number.isFinite(point.time)
+    )
+    .sort((a, b) => a.time - b.time)
+    .slice(0, 12);
+
+  if (plotted.length < 2) {
+    return null;
+  }
+
+  const width = 300;
+  const height = 150;
+  const padX = 14;
+  const padY = 18;
+  const minTime = plotted[0].time;
+  const maxTime = plotted.at(-1)?.time ?? minTime + 1;
+  const minFeet = Math.min(...plotted.map((point) => point.feet));
+  const maxFeet = Math.max(...plotted.map((point) => point.feet));
+  const feetRange = Math.max(maxFeet - minFeet, 1);
+  const timeRange = Math.max(maxTime - minTime, 1);
+  const points = plotted.map((point) => {
+    const x = padX + ((point.time - minTime) / timeRange) * (width - padX * 2);
+    const y =
+      height - padY - ((point.feet - minFeet) / feetRange) * (height - padY * 2);
+
+    return { ...point, x, y };
+  });
+  const linePath = points.reduce((path, point, index) => {
+    if (index === 0) {
+      return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    }
+
+    const previous = points[index - 1];
+    const midX = (previous.x + point.x) / 2;
+
+    return `${path} C ${midX.toFixed(1)} ${previous.y.toFixed(1)}, ${midX.toFixed(
+      1
+    )} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+  }, "");
+  const first = points[0];
+  const last = points.at(-1) ?? first;
+  const areaPath = `${linePath} L ${last.x.toFixed(1)} ${(
+    height - padY
+  ).toFixed(1)} L ${first.x.toFixed(1)} ${(height - padY).toFixed(1)} Z`;
+
+  return {
+    areaPath,
+    linePath,
+    maxFeet,
+    minFeet,
+    points,
+    viewBox: `0 0 ${width} ${height}`
+  };
+}
+
+function TidePanel({ forecast }: { forecast: SurfForecast }) {
+  const curve = buildTideCurve(forecast.tideEvents);
+
+  return (
+    <aside className="tide-panel" aria-label="Tide graph">
+      <div className="tide-panel__header">
+        <span>Tide curve</span>
+        <strong>{curve ? "Next extremes" : "Unavailable"}</strong>
+      </div>
+      {curve ? (
+        <>
+          <svg
+            className="tide-curve"
+            viewBox={curve.viewBox}
+            role="img"
+            aria-label="Upcoming tide highs and lows"
+          >
+            <defs>
+              <linearGradient id="tide-fill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="rgba(8, 145, 178, 0.3)" />
+                <stop offset="100%" stopColor="rgba(8, 145, 178, 0.03)" />
+              </linearGradient>
+            </defs>
+            <path d={curve.areaPath} fill="url(#tide-fill)" />
+            <path d={curve.linePath} className="tide-curve__line" />
+            {curve.points.map((point) => (
+              <g key={`${point.event.type}-${point.event.time}`}>
+                <circle cx={point.x} cy={point.y} r="3.5" />
+              </g>
+            ))}
+          </svg>
+          <div className="tide-panel__range">
+            <span>{curve.minFeet.toFixed(1)} ft</span>
+            <span>{curve.maxFeet.toFixed(1)} ft</span>
+          </div>
+          <div className="tide-events">
+            {curve.points.slice(0, 6).map((point) => (
+              <div key={`${point.event.type}-label-${point.event.time}`}>
+                <span>{point.event.type === "high" ? "High" : "Low"}</span>
+                <strong>
+                  {formatTidePanelTime(point.event.time)} · {point.feet.toFixed(1)} ft
+                </strong>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p>Tide extremes are unavailable right now.</p>
+      )}
+    </aside>
+  );
+}
+
 export function ForecastTable() {
   const [forecast, setForecast] = useState<SurfForecast | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -247,78 +384,81 @@ export function ForecastTable() {
       <div className="forecast-debug">
         Primary: best match · Secondary: GFS Wave
       </div>
-      <div className="forecast-table-wrap">
-        <table className="forecast-table">
-          <thead>
-            <tr>
-              <th scope="col">Time</th>
-              <th scope="col">Wave Height</th>
-              <th scope="col">Primary Swell</th>
-              <th scope="col">Secondary Swell</th>
-              <th scope="col">Tertiary Swell</th>
-              <th scope="col">Wind</th>
-              <th scope="col">Energy</th>
-              <th scope="col">Tide</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayRows.map((row) => {
-              const currentDay = dayKey(row.time);
-              const showDay = currentDay !== previousDay;
-              previousDay = currentDay;
+      <div className="forecast-layout">
+        <div className="forecast-table-wrap">
+          <table className="forecast-table">
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">Wave Height</th>
+                <th scope="col">Primary Swell</th>
+                <th scope="col">Secondary Swell</th>
+                <th scope="col">Tertiary Swell</th>
+                <th scope="col">Wind</th>
+                <th scope="col">Energy</th>
+                <th scope="col">Tide</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayRows.map((row) => {
+                const currentDay = dayKey(row.time);
+                const showDay = currentDay !== previousDay;
+                previousDay = currentDay;
 
-              return (
-                <Fragment key={row.time}>
-                  {showDay ? (
-                    <tr className="day-row" key={`${row.time}-day`}>
-                      <th colSpan={8}>{formatDay(row.time)}</th>
+                return (
+                  <Fragment key={row.time}>
+                    {showDay ? (
+                      <tr className="day-row" key={`${row.time}-day`}>
+                        <th colSpan={8}>{formatDay(row.time)}</th>
+                      </tr>
+                    ) : null}
+                    <tr>
+                      <th scope="row">{formatTime(row.time)}</th>
+                      <td>
+                        <strong>{formatHeight(row.waveHeight)}</strong>
+                      </td>
+                      <td>
+                        <SwellCell
+                          height={row.primarySwell.height}
+                          period={row.primarySwell.period}
+                          direction={row.primarySwell.direction}
+                        />
+                      </td>
+                      <td>
+                        <SwellCell
+                          height={row.secondarySwell.height}
+                          period={row.secondarySwell.period}
+                          direction={row.secondarySwell.direction}
+                        />
+                      </td>
+                      <td>
+                        <SwellCell
+                          height={row.tertiarySwell.height}
+                          period={row.tertiarySwell.period}
+                          direction={row.tertiarySwell.direction}
+                        />
+                      </td>
+                      <td>
+                        <WindCell
+                          speed={row.wind.speed}
+                          direction={row.wind.direction}
+                          gusts={row.wind.gusts}
+                        />
+                      </td>
+                      <td>
+                        <strong>{formatWaveEnergy(row.waveEnergy)}</strong>
+                      </td>
+                      <td>
+                        <strong>{formatTideEvent(row.tide)}</strong>
+                      </td>
                     </tr>
-                  ) : null}
-                  <tr>
-                    <th scope="row">{formatTime(row.time)}</th>
-                    <td>
-                      <strong>{formatHeight(row.waveHeight)}</strong>
-                    </td>
-                    <td>
-                      <SwellCell
-                        height={row.primarySwell.height}
-                        period={row.primarySwell.period}
-                        direction={row.primarySwell.direction}
-                      />
-                    </td>
-                    <td>
-                      <SwellCell
-                        height={row.secondarySwell.height}
-                        period={row.secondarySwell.period}
-                        direction={row.secondarySwell.direction}
-                      />
-                    </td>
-                    <td>
-                      <SwellCell
-                        height={row.tertiarySwell.height}
-                        period={row.tertiarySwell.period}
-                        direction={row.tertiarySwell.direction}
-                      />
-                    </td>
-                    <td>
-                      <WindCell
-                        speed={row.wind.speed}
-                        direction={row.wind.direction}
-                        gusts={row.wind.gusts}
-                      />
-                    </td>
-                    <td>
-                      <strong>{formatWaveEnergy(row.waveEnergy)}</strong>
-                    </td>
-                    <td>
-                      <strong>{formatTideEvent(row.tide)}</strong>
-                    </td>
-                  </tr>
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <TidePanel forecast={forecast} />
       </div>
     </>
   );
