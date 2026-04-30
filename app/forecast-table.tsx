@@ -1,11 +1,10 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import type { SurfForecast } from "@/lib/forecast-types";
 
 const SWELL_MODELS = [
   { label: "Best match", value: "best_match" },
-  { label: "ECMWF WAM", value: "ecmwf_wam" },
   { label: "GFS Wave", value: "gfs_wave" },
   { label: "MeteoFrance MFWAM", value: "meteofrance_mfwam" }
 ] as const;
@@ -89,18 +88,8 @@ function formatDirectionDegrees(value: number | null | undefined) {
   return typeof value === "number" ? `${Math.round(value)}°` : "--";
 }
 
-function formatSwell(
-  height: number | null,
-  period: number | null,
-  direction: number | null
-) {
-  return `${formatHeight(height)} @ ${formatPeriod(period)} ${cardinalFromDegrees(
-    direction
-  )} ${formatDirectionDegrees(direction)}`;
-}
-
-function formatEnergy(value: number | null | undefined) {
-  return typeof value === "number" ? `Energy ${Math.round(value)}` : null;
+function formatWaveEnergy(value: number | null | undefined) {
+  return typeof value === "number" ? Math.round(value).toString() : "--";
 }
 
 function formatWindSpeed(value: number | null | undefined) {
@@ -133,12 +122,6 @@ function formatTideEvent(value: SurfForecast["rows"][number]["tide"]) {
   return `${label} ${formatTime(value.event.time)} ${formatTide(value.event.height)}`;
 }
 
-function formatTideSummaryEvent(event: SurfForecast["tideEvents"][number]) {
-  const label = event.type === "high" ? "High" : "Low";
-
-  return `${label} ${formatTime(event.time)} ${formatTide(event.height)}`;
-}
-
 function formatGeneratedAt(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -147,6 +130,69 @@ function formatGeneratedAt(value: string) {
     minute: "2-digit",
     timeZone: "America/Managua"
   }).format(new Date(value));
+}
+
+function DirectionArrow({
+  degrees,
+  tone = "swell"
+}: {
+  degrees: number | null | undefined;
+  tone?: "swell" | "wind";
+}) {
+  if (typeof degrees !== "number") {
+    return <span className="direction-arrow direction-arrow--empty">--</span>;
+  }
+
+  return (
+    <span
+      className={`direction-arrow direction-arrow--${tone}`}
+      style={{ "--direction": `${degrees}deg` } as CSSProperties}
+      aria-hidden="true"
+    >
+      ↑
+    </span>
+  );
+}
+
+function SwellCell({
+  height,
+  period,
+  direction
+}: {
+  height: number | null;
+  period: number | null;
+  direction: number | null;
+}) {
+  return (
+    <>
+      <div className="metric-line">
+        <DirectionArrow degrees={direction} />
+        <strong>
+          {formatHeight(height)} @ {formatPeriod(period)}
+        </strong>
+      </div>
+      <span>
+        {cardinalFromDegrees(direction)} {formatDirectionDegrees(direction)}
+      </span>
+    </>
+  );
+}
+
+function WindCell({
+  speed,
+  direction,
+  gusts
+}: {
+  speed: number | null;
+  direction: number | null;
+  gusts: number | null;
+}) {
+  return (
+    <div className="metric-line">
+      <DirectionArrow degrees={direction} tone="wind" />
+      <strong>{formatWind(speed, direction, gusts)}</strong>
+    </div>
+  );
 }
 
 export function ForecastTable() {
@@ -195,15 +241,6 @@ export function ForecastTable() {
 
   let previousDay = "";
   const displayRows = forecast.rows.filter((row) => isSurfHour(row.time));
-  const tideEventsByDay = forecast.tideEvents.reduce<
-    Record<string, SurfForecast["tideEvents"]>
-  >((eventsByDay, event) => {
-    const key = dayKey(event.time);
-
-    eventsByDay[key] = [...(eventsByDay[key] ?? []), event];
-
-    return eventsByDay;
-  }, {});
 
   return (
     <>
@@ -235,6 +272,7 @@ export function ForecastTable() {
             <tr>
               <th scope="col">Time</th>
               <th scope="col">Wave Height</th>
+              <th scope="col">Energy</th>
               <th scope="col">Primary Swell</th>
               <th scope="col">Secondary Swell</th>
               <th scope="col">Wind</th>
@@ -250,25 +288,9 @@ export function ForecastTable() {
               return (
                 <Fragment key={row.time}>
                   {showDay ? (
-                    <>
-                      <tr className="day-row" key={`${row.time}-day`}>
-                        <th colSpan={6}>{formatDay(row.time)}</th>
-                      </tr>
-                      <tr className="tide-summary-row" key={`${row.time}-tides`}>
-                        <th scope="row">Tides</th>
-                        <td colSpan={5}>
-                          {tideEventsByDay[currentDay]?.length ? (
-                            tideEventsByDay[currentDay].map((event) => (
-                              <span key={`${event.type}-${event.time}`}>
-                                {formatTideSummaryEvent(event)}
-                              </span>
-                            ))
-                          ) : (
-                            <span>—</span>
-                          )}
-                        </td>
-                      </tr>
-                    </>
+                    <tr className="day-row" key={`${row.time}-day`}>
+                      <th colSpan={7}>{formatDay(row.time)}</th>
+                    </tr>
                   ) : null}
                   <tr>
                     <th scope="row">{formatTime(row.time)}</th>
@@ -276,37 +298,28 @@ export function ForecastTable() {
                       <strong>{formatHeight(row.waveHeight)}</strong>
                     </td>
                     <td>
-                      <strong>
-                        {formatSwell(
-                          row.primarySwell.height,
-                          row.primarySwell.period,
-                          row.primarySwell.direction
-                        )}
-                      </strong>
-                      {formatEnergy(row.primarySwell.energy) ? (
-                        <span>{formatEnergy(row.primarySwell.energy)}</span>
-                      ) : null}
+                      <strong>{formatWaveEnergy(row.waveEnergy)}</strong>
                     </td>
                     <td>
-                      <strong>
-                        {formatSwell(
-                          row.secondarySwell.height,
-                          row.secondarySwell.period,
-                          row.secondarySwell.direction
-                        )}
-                      </strong>
-                      {formatEnergy(row.secondarySwell.energy) ? (
-                        <span>{formatEnergy(row.secondarySwell.energy)}</span>
-                      ) : null}
+                      <SwellCell
+                        height={row.primarySwell.height}
+                        period={row.primarySwell.period}
+                        direction={row.primarySwell.direction}
+                      />
                     </td>
                     <td>
-                      <strong>
-                        {formatWind(
-                          row.wind.speed,
-                          row.wind.direction,
-                          row.wind.gusts
-                        )}
-                      </strong>
+                      <SwellCell
+                        height={row.secondarySwell.height}
+                        period={row.secondarySwell.period}
+                        direction={row.secondarySwell.direction}
+                      />
+                    </td>
+                    <td>
+                      <WindCell
+                        speed={row.wind.speed}
+                        direction={row.wind.direction}
+                        gusts={row.wind.gusts}
+                      />
                     </td>
                     <td>
                       <strong>{formatTideEvent(row.tide)}</strong>
