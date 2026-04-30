@@ -137,10 +137,12 @@ function DirectionArrow({
     return <span className="direction-arrow direction-arrow--empty">-</span>;
   }
 
+  const displayDegrees = tone === "swell" ? (degrees + 180) % 360 : degrees;
+
   return (
     <span
       className={`direction-arrow direction-arrow--${tone}`}
-      style={{ "--direction": `${degrees}deg` } as CSSProperties}
+      style={{ "--direction": `${displayDegrees}deg` } as CSSProperties}
       aria-hidden="true"
     >
       ↑
