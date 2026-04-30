@@ -183,7 +183,7 @@ h2 {
 
 .forecast-table {
   width: 100%;
-  min-width: 1200px;
+  min-width: 1340px;
   border-collapse: collapse;
 }
 
@@ -236,9 +236,11 @@ h2 {
 
 .forecast-table th:nth-child(3),
 .forecast-table th:nth-child(4),
+.forecast-table th:nth-child(5),
 .forecast-table td:nth-child(3),
-.forecast-table td:nth-child(4) {
-  min-width: 190px;
+.forecast-table td:nth-child(4),
+.forecast-table td:nth-child(5) {
+  min-width: 175px;
 }
 
 .forecast-table td strong {
