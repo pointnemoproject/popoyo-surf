@@ -255,6 +255,7 @@ export function ForecastTable() {
               <th scope="col">Wave Height</th>
               <th scope="col">Primary Swell</th>
               <th scope="col">Secondary Swell</th>
+              <th scope="col">Tertiary Swell</th>
               <th scope="col">Wind</th>
               <th scope="col">Energy</th>
               <th scope="col">Tide</th>
@@ -270,7 +271,7 @@ export function ForecastTable() {
                 <Fragment key={row.time}>
                   {showDay ? (
                     <tr className="day-row" key={`${row.time}-day`}>
-                      <th colSpan={7}>{formatDay(row.time)}</th>
+                      <th colSpan={8}>{formatDay(row.time)}</th>
                     </tr>
                   ) : null}
                   <tr>
@@ -290,6 +291,13 @@ export function ForecastTable() {
                         height={row.secondarySwell.height}
                         period={row.secondarySwell.period}
                         direction={row.secondarySwell.direction}
+                      />
+                    </td>
+                    <td>
+                      <SwellCell
+                        height={row.tertiarySwell.height}
+                        period={row.tertiarySwell.period}
+                        direction={row.tertiarySwell.direction}
                       />
                     </td>
                     <td>
