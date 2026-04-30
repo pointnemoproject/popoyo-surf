@@ -21,6 +21,9 @@ type MarineHourly = {
   secondary_swell_wave_height?: NullableNumber[];
   secondary_swell_wave_period?: NullableNumber[];
   secondary_swell_wave_direction?: NullableNumber[];
+  tertiary_swell_wave_height?: NullableNumber[];
+  tertiary_swell_wave_period?: NullableNumber[];
+  tertiary_swell_wave_direction?: NullableNumber[];
   swell_wave_peak_period?: NullableNumber[];
   sea_level_height_msl?: NullableNumber[];
 };
@@ -88,7 +91,7 @@ const STORMGLASS_TIDE_ENDPOINT =
 const STORMGLASS_TIDE_EXTREMES_ENDPOINT =
   "https://api.stormglass.io/v2/tide/extremes/point";
 const SWELL_HOURLY =
-  "wave_height,swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,swell_wave_peak_period";
+  "wave_height,swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_period,secondary_swell_wave_direction,tertiary_swell_wave_height,tertiary_swell_wave_period,tertiary_swell_wave_direction,swell_wave_peak_period";
 const WIND_HOURLY = "wind_speed_10m,wind_direction_10m,wind_gusts_10m";
 const TIDE_FORECAST_DAYS = 10;
 const TIDE_REVALIDATE_SECONDS = 6 * 60 * 60;
@@ -232,21 +235,24 @@ function energyScore(height: NullableNumber, period: NullableNumber) {
     : null;
 }
 
-function rankSwellComponents(
-  primary: {
-    height: NullableNumber;
-    period: NullableNumber;
-    peakPeriod: NullableNumber;
-    direction: NullableNumber;
-  },
-  secondary: {
-    height: NullableNumber;
-    period: NullableNumber;
-    peakPeriod: NullableNumber;
-    direction: NullableNumber;
-  }
-) {
-  const components = [primary, secondary].map((component, index) => {
+type SwellComponent = {
+  height: NullableNumber;
+  period: NullableNumber;
+  peakPeriod: NullableNumber;
+  direction: NullableNumber;
+};
+
+function emptySwellComponent(): SwellComponent {
+  return {
+    height: null,
+    period: null,
+    peakPeriod: null,
+    direction: null
+  };
+}
+
+function rankSwellComponents(componentsToRank: SwellComponent[]) {
+  const components = componentsToRank.map((component, index) => {
     const energy = energyScore(component.height, component.period);
 
     return {
@@ -259,19 +265,53 @@ function rankSwellComponents(
   components.sort((a, b) => b.energyScore - a.energyScore || a.index - b.index);
 
   return {
-    primarySwell: components[0].component,
-    secondarySwell: components[1].component
+    primarySwell: components[0]?.component ?? emptySwellComponent(),
+    secondarySwell: components[1]?.component ?? emptySwellComponent(),
+    tertiarySwell: components[2]?.component ?? emptySwellComponent()
   };
 }
 
-function aggregateWaveEnergy(
-  primarySwell: ReturnType<typeof rankSwellComponents>["primarySwell"],
-  secondarySwell: ReturnType<typeof rankSwellComponents>["secondarySwell"]
+function buildSwellComponents(
+  swellHourly: MarineHourly | undefined,
+  swellIndex: number | undefined
 ) {
-  const energies = [
-    energyScore(primarySwell.height, primarySwell.period),
-    energyScore(secondarySwell.height, secondarySwell.period)
-  ].filter((value): value is number => typeof value === "number");
+  if (typeof swellIndex !== "number" || !swellHourly) {
+    return [emptySwellComponent(), emptySwellComponent(), emptySwellComponent()];
+  }
+
+  return [
+    {
+      height: byTime(swellHourly, swellIndex, "swell_wave_height"),
+      period: byTime(swellHourly, swellIndex, "swell_wave_period"),
+      peakPeriod: byTime(swellHourly, swellIndex, "swell_wave_peak_period"),
+      direction: byTime(swellHourly, swellIndex, "swell_wave_direction")
+    },
+    {
+      height: byTime(swellHourly, swellIndex, "secondary_swell_wave_height"),
+      period: byTime(swellHourly, swellIndex, "secondary_swell_wave_period"),
+      peakPeriod: null,
+      direction: byTime(swellHourly, swellIndex, "secondary_swell_wave_direction")
+    },
+    {
+      height: byTime(swellHourly, swellIndex, "tertiary_swell_wave_height"),
+      period: byTime(swellHourly, swellIndex, "tertiary_swell_wave_period"),
+      peakPeriod: null,
+      direction: byTime(swellHourly, swellIndex, "tertiary_swell_wave_direction")
+    }
+  ];
+}
+
+function rankedSwellRow(
+  swellHourly: MarineHourly | undefined,
+  swellIndex: number | undefined
+) {
+  return rankSwellComponents(buildSwellComponents(swellHourly, swellIndex));
+}
+
+function aggregateWaveEnergy(...swells: SwellComponent[]) {
+  const energies = swells
+    .map((swell) => energyScore(swell.height, swell.period))
+    .filter((value): value is number => typeof value === "number");
 
   return energies.length
     ? energies.reduce((total, value) => total + value, 0)
@@ -493,47 +533,6 @@ function windRow(
   };
 }
 
-function rankedSwellRow(
-  swellHourly: MarineHourly | undefined,
-  swellIndex: number | undefined
-) {
-  return rankSwellComponents(
-    {
-      height:
-        typeof swellIndex === "number" && swellHourly
-          ? byTime(swellHourly, swellIndex, "swell_wave_height")
-          : null,
-      period:
-        typeof swellIndex === "number" && swellHourly
-          ? byTime(swellHourly, swellIndex, "swell_wave_period")
-          : null,
-      peakPeriod:
-        typeof swellIndex === "number" && swellHourly
-          ? byTime(swellHourly, swellIndex, "swell_wave_peak_period")
-          : null,
-      direction:
-        typeof swellIndex === "number" && swellHourly
-          ? byTime(swellHourly, swellIndex, "swell_wave_direction")
-          : null
-    },
-    {
-      height:
-        typeof swellIndex === "number" && swellHourly
-          ? byTime(swellHourly, swellIndex, "secondary_swell_wave_height")
-          : null,
-      period:
-        typeof swellIndex === "number" && swellHourly
-          ? byTime(swellHourly, swellIndex, "secondary_swell_wave_period")
-          : null,
-      peakPeriod: null,
-      direction:
-        typeof swellIndex === "number" && swellHourly
-          ? byTime(swellHourly, swellIndex, "secondary_swell_wave_direction")
-          : null
-    }
-  );
-}
-
 function waveHeightRow(
   swellHourly: MarineHourly | undefined,
   swellIndex: number | undefined
@@ -648,10 +647,12 @@ export async function getForecast(): Promise<SurfForecast> {
         waveHeight: waveHeightRow(primarySwellHourly, primarySwellIndex),
         waveEnergy: aggregateWaveEnergy(
           rankedPrimarySwell.primarySwell,
-          rankedSecondarySwell.primarySwell
+          rankedSecondarySwell.primarySwell,
+          rankedPrimarySwell.tertiarySwell
         ),
         primarySwell: rankedPrimarySwell.primarySwell,
         secondarySwell: rankedSecondarySwell.primarySwell,
+        tertiarySwell: rankedPrimarySwell.tertiarySwell,
         wind: windRow(windHourly, windIndex),
         tide: tideRow(tideValue, tideEvent)
       };
