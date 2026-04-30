@@ -259,17 +259,17 @@ function TideCell({
 }) {
   const range = Math.max(max - min, 1);
   const x = (value: number | null) =>
-    typeof value === "number" ? 18 + ((value - min) / range) * 64 : null;
+    typeof value === "number" ? 28 + ((value - min) / range) * 44 : null;
   const previousX = x(previous ?? current);
   const currentX = x(current);
   const nextX = x(next ?? current);
   const path =
     previousX !== null && currentX !== null && nextX !== null
-      ? `M ${previousX.toFixed(1)} 0 C ${previousX.toFixed(1)} 24, ${currentX.toFixed(
+      ? `M ${previousX.toFixed(1)} -8 C ${previousX.toFixed(1)} 18, ${currentX.toFixed(
           1
         )} 26, ${currentX.toFixed(1)} 50 C ${currentX.toFixed(1)} 74, ${nextX.toFixed(
           1
-        )} 76, ${nextX.toFixed(1)} 100`
+        )} 82, ${nextX.toFixed(1)} 108`
       : null;
 
   return (
@@ -335,6 +335,19 @@ export function ForecastTable() {
   const displayRows = forecast.rows.filter((row) => isSurfHour(row.time));
   const tideAt = buildTideInterpolator(forecast.tideEvents);
   const tidePoints = displayRows.map((row) => (tideAt ? tideAt(row.time) : null));
+  const smoothedTidePoints = tidePoints.map((point, index) => {
+    if (typeof point !== "number") {
+      return null;
+    }
+
+    const neighbors = [tidePoints[index - 1], point, tidePoints[index + 1]].filter(
+      (value): value is number => typeof value === "number"
+    );
+
+    return (
+      neighbors.reduce((total, value) => total + value, 0) / Math.max(neighbors.length, 1)
+    );
+  });
   const visibleTidePoints = tidePoints.filter(
     (value): value is number => typeof value === "number"
   );
@@ -418,9 +431,9 @@ export function ForecastTable() {
                     <td>
                       <TideCell
                         label={formatTideEvent(row.tide)}
-                        previous={tidePoints[index - 1] ?? null}
-                        current={tidePoints[index] ?? null}
-                        next={tidePoints[index + 1] ?? null}
+                        previous={smoothedTidePoints[index - 1] ?? null}
+                        current={smoothedTidePoints[index] ?? null}
+                        next={smoothedTidePoints[index + 1] ?? null}
                         min={minTideFeet}
                         max={maxTideFeet}
                       />
