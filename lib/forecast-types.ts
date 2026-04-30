@@ -34,6 +34,12 @@ export type ForecastRow = {
     peakPeriod: NullableNumber;
     direction: NullableNumber;
   };
+  tertiarySwell: {
+    height: NullableNumber;
+    period: NullableNumber;
+    peakPeriod: NullableNumber;
+    direction: NullableNumber;
+  };
   wind: {
     speed: NullableNumber;
     gusts: NullableNumber;
