@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Ryan's Surf Report",
-  description: "16-day surf forecast for Ryan's Popoyo setup."
+  title: "Popoyo Surf",
+  description: "16-day surf forecast for Popoyo, Nicaragua."
 };
 
 export default function RootLayout({
