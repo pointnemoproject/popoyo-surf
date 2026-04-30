@@ -11,7 +11,7 @@ export default function Home() {
         <div className="hero__inner">
           <div>
             <p className="eyebrow">Nicaragua Pacific</p>
-            <h1>Ryan&apos;s Surf Report</h1>
+            <h1>Popoyo Surf</h1>
             <p className="lede">
               A clean 16-day surf readout using offshore swell data and nearshore
               wind and tide signals.
