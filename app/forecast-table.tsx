@@ -3,12 +3,6 @@
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import type { SurfForecast } from "@/lib/forecast-types";
 
-const SWELL_MODELS = [
-  { label: "Best match", value: "best_match" },
-  { label: "GFS Wave", value: "gfs_wave" },
-  { label: "MeteoFrance MFWAM", value: "meteofrance_mfwam" }
-] as const;
-
 const DISPLAY_START_HOUR = 5;
 const DISPLAY_END_HOUR = 18;
 
@@ -140,7 +134,7 @@ function DirectionArrow({
   tone?: "swell" | "wind";
 }) {
   if (typeof degrees !== "number") {
-    return <span className="direction-arrow direction-arrow--empty">--</span>;
+    return <span className="direction-arrow direction-arrow--empty">-</span>;
   }
 
   return (
@@ -198,15 +192,13 @@ function WindCell({
 export function ForecastTable() {
   const [forecast, setForecast] = useState<SurfForecast | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [swellModel, setSwellModel] = useState("best_match");
 
   useEffect(() => {
     let ignore = false;
 
     async function loadForecast() {
       try {
-        const params = new URLSearchParams({ swellModel });
-        const response = await fetch(`/api/forecast?${params.toString()}`);
+        const response = await fetch("/api/forecast");
 
         if (!response.ok) {
           throw new Error("Forecast request failed");
@@ -229,7 +221,7 @@ export function ForecastTable() {
     return () => {
       ignore = true;
     };
-  }, [swellModel]);
+  }, []);
 
   if (error) {
     return <div className="forecast-state">{error}</div>;
@@ -249,22 +241,9 @@ export function ForecastTable() {
         {forecast.currentTide ? (
           <span>Current tide: {formatTide(forecast.currentTide.seaLevelMsl)}</span>
         ) : null}
-        <label className="model-selector">
-          Swell model
-          <select
-            value={swellModel}
-            onChange={(event) => setSwellModel(event.target.value)}
-          >
-            {SWELL_MODELS.map((model) => (
-              <option key={model.value} value={model.value}>
-                {model.label}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
       <div className="forecast-debug">
-        Active swell model: {forecast.activeSwellModel}
+        Primary: best match · Secondary: GFS Wave
       </div>
       <div className="forecast-table-wrap">
         <table className="forecast-table">
@@ -272,10 +251,10 @@ export function ForecastTable() {
             <tr>
               <th scope="col">Time</th>
               <th scope="col">Wave Height</th>
-              <th scope="col">Energy</th>
               <th scope="col">Primary Swell</th>
               <th scope="col">Secondary Swell</th>
               <th scope="col">Wind</th>
+              <th scope="col">Energy</th>
               <th scope="col">Tide</th>
             </tr>
           </thead>
@@ -298,9 +277,6 @@ export function ForecastTable() {
                       <strong>{formatHeight(row.waveHeight)}</strong>
                     </td>
                     <td>
-                      <strong>{formatWaveEnergy(row.waveEnergy)}</strong>
-                    </td>
-                    <td>
                       <SwellCell
                         height={row.primarySwell.height}
                         period={row.primarySwell.period}
@@ -320,6 +296,9 @@ export function ForecastTable() {
                         direction={row.wind.direction}
                         gusts={row.wind.gusts}
                       />
+                    </td>
+                    <td>
+                      <strong>{formatWaveEnergy(row.waveEnergy)}</strong>
                     </td>
                     <td>
                       <strong>{formatTideEvent(row.tide)}</strong>
