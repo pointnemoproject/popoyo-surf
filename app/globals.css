@@ -1,15 +1,15 @@
 :root {
-  --bg: #f6f8f7;
-  --ink: #111827;
-  --muted: #667085;
-  --line: rgba(17, 24, 39, 0.1);
+  --bg: #f7f8fa;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: rgba(15, 23, 42, 0.09);
   --surface: #ffffff;
   --surface-strong: #ffffff;
-  --accent: #00a6a6;
-  --accent-dark: #006d77;
-  --swell: #0ea5e9;
-  --wind: #10b981;
-  --energy: #f97316;
+  --accent: #0891b2;
+  --accent-dark: #0e7490;
+  --swell: #2563eb;
+  --wind: #059669;
+  --energy: #ea580c;
   --night: #0b1220;
 }
 
@@ -26,8 +26,8 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(circle at 12% 0%, rgba(0, 166, 166, 0.16), transparent 28rem),
-    radial-gradient(circle at 88% 6%, rgba(249, 115, 22, 0.12), transparent 24rem),
+    radial-gradient(circle at 12% 0%, rgba(8, 145, 178, 0.12), transparent 30rem),
+    radial-gradient(circle at 88% 6%, rgba(234, 88, 12, 0.08), transparent 24rem),
     var(--bg);
   font-family:
     Arial,
@@ -125,8 +125,8 @@ h2 {
 }
 
 .forecast-shell {
-  width: min(1180px, calc(100% - 32px));
-  margin: 28px auto 56px;
+  width: min(1240px, calc(100% - 32px));
+  margin: 30px auto 64px;
 }
 
 .table-heading {
@@ -149,7 +149,7 @@ h2 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-strong);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.1);
 }
 
 .updated-pill,
@@ -164,24 +164,6 @@ h2 {
   flex-wrap: wrap;
   gap: 12px 18px;
   align-items: center;
-}
-
-.model-selector {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  color: var(--ink);
-  font-weight: 700;
-}
-
-.model-selector select {
-  min-height: 32px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-strong);
-  color: var(--ink);
-  font: inherit;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 .forecast-debug {
@@ -201,13 +183,13 @@ h2 {
 
 .forecast-table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1200px;
   border-collapse: collapse;
 }
 
 .forecast-table th,
 .forecast-table td {
-  padding: 15px 18px;
+  padding: 9px 18px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: middle;
@@ -217,17 +199,18 @@ h2 {
   position: sticky;
   top: 0;
   z-index: 1;
-  color: #475467;
+  color: #475569;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .forecast-table tbody th {
-  width: 210px;
+  width: 180px;
   color: var(--ink);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 800;
 }
 
@@ -237,8 +220,9 @@ h2 {
 
 .forecast-table .day-row th {
   color: var(--accent-dark);
-  background: linear-gradient(90deg, rgba(0, 166, 166, 0.12), rgba(16, 185, 129, 0.04));
-  font-size: 0.88rem;
+  background: linear-gradient(90deg, rgba(8, 145, 178, 0.08), rgba(5, 150, 105, 0.03));
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -247,24 +231,36 @@ h2 {
 }
 
 .forecast-table td {
-  min-width: 150px;
+  min-width: 145px;
+}
+
+.forecast-table th:nth-child(3),
+.forecast-table th:nth-child(4),
+.forecast-table td:nth-child(3),
+.forecast-table td:nth-child(4) {
+  min-width: 190px;
 }
 
 .forecast-table td strong {
   display: block;
-  margin-bottom: 4px;
-  font-size: 1.04rem;
+  margin-bottom: 2px;
+  font-size: 0.98rem;
+  letter-spacing: 0;
 }
 
 .forecast-table td span {
+  display: block;
+  margin-top: 2px;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1.15;
 }
 
 .metric-line {
   display: inline-flex;
   align-items: center;
   gap: 9px;
+  white-space: nowrap;
 }
 
 .metric-line strong {
@@ -272,30 +268,28 @@ h2 {
 }
 
 .direction-arrow {
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   display: inline-grid;
   place-items: center;
-  flex: 0 0 24px;
-  border-radius: 999px;
-  color: white;
-  font-size: 0.95rem;
+  flex: 0 0 16px;
+  color: var(--swell);
+  font-size: 1.05rem;
   font-weight: 900;
   line-height: 1;
   transform: rotate(var(--direction));
 }
 
 .direction-arrow--swell {
-  background: linear-gradient(135deg, var(--swell), #2563eb);
+  color: var(--swell);
 }
 
 .direction-arrow--wind {
-  background: linear-gradient(135deg, var(--wind), #059669);
+  color: var(--wind);
 }
 
 .direction-arrow--empty {
   color: var(--muted);
-  background: rgba(102, 112, 133, 0.12);
   font-size: 0.7rem;
   transform: none;
 }
@@ -323,6 +317,6 @@ h2 {
 
   .forecast-table th,
   .forecast-table td {
-    padding: 14px 12px;
+    padding: 10px 12px;
   }
 }
